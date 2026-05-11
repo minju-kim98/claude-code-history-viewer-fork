@@ -7,7 +7,10 @@ fork 내부에서만 운영한다.
 
 ## 1. 업스트림 업데이트 받기
 
-`upstream` remote는 이미 설정되어 있다.
+`upstream` remote는 이미 설정되어 있다. 이 fork는 단일 feature 브랜치만
+운영하므로 (default branch = `feature/ditcodeagent-provider`, origin에 `develop`
+없음, 로컬 `develop`은 `upstream/develop`을 직접 추적) feature 브랜치에서
+`upstream/develop`으로 바로 rebase하면 된다.
 
 ```powershell
 cd D:\development\personal\claude-code-history-viewer-fork
@@ -15,14 +18,9 @@ cd D:\development\personal\claude-code-history-viewer-fork
 # 1) 업스트림 최신 가져오기
 git fetch upstream
 
-# 2) develop 동기화
-git checkout develop
-git merge upstream/develop
-git push                       # fork의 develop도 갱신
-
-# 3) feature 브랜치 rebase
+# 2) feature 브랜치 rebase
 git checkout feature/ditcodeagent-provider
-git rebase develop
+git rebase upstream/develop
 git push --force-with-lease    # rebase 후라 force-with-lease 필요
 ```
 
@@ -95,20 +93,20 @@ Windows 설치본을 빌드해 fork 저장소의 release에 업로드한다. 이
 
 **월간 릴리즈 한 사이클** (예: 1.13.0 → 1.14.0):
 
+> 이 fork는 default branch가 `feature/ditcodeagent-provider`고 origin에 `develop`이
+> 없다. 로컬 `develop`은 `upstream/develop`을 직접 추적하므로 `git checkout develop`
+> 단계는 실질 no-op이라 생략한다. feature 브랜치에서 `upstream/develop`으로 바로
+> rebase한다.
+
 ```powershell
 cd D:\development\personal\claude-code-history-viewer-fork
 
-# 1) upstream 최신 받기 (§1 참고)
+# 1) upstream 최신 받기
 git fetch upstream
 
-# 2) (옵션) develop 동기화. develop을 별도 통합 브랜치로 안 쓴다면 생략 가능
-git checkout develop
-git merge upstream/develop
-git push
-
-# 3) feature 브랜치 rebase + 충돌 해결
+# 2) feature 브랜치에서 직접 rebase + 충돌 해결
 git checkout feature/ditcodeagent-provider
-git rebase upstream/develop          # 또는 git rebase develop
+git rebase upstream/develop
 # 충돌 시 §1 "머지 충돌 가능 지점" 표 참고
 git push --force-with-lease
 
