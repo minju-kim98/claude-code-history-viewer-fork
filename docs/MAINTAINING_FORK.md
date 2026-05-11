@@ -5,26 +5,86 @@
 **DITCodeAgent provider**를 추가한 사내용 fork다. 업스트림에 기여하지 않고
 fork 내부에서만 운영한다.
 
-## 1. 업스트림 업데이트 받기
+## 1. 월간 릴리즈 한 사이클
 
-`upstream` remote는 이미 설정되어 있다. 이 fork는 단일 feature 브랜치만
-운영하므로 (default branch = `feature/ditcodeagent-provider`, origin에 `develop`
-없음, 로컬 `develop`은 `upstream/develop`을 직접 추적) feature 브랜치에서
-`upstream/develop`으로 바로 rebase하면 된다.
+`v*` 태그를 푸시하면 GitHub Actions(`.github/workflows/fork-release.yml`)가
+Windows 설치본을 빌드해 fork release에 업로드한다. 이미 설치된 팀원 앱은
+Tauri 업데이터가 `latest.json`을 보고 자동으로 새 버전을 받는다.
+
+> 이 fork는 단일 feature 브랜치만 운영한다 (default branch
+> = `feature/ditcodeagent-provider`, origin에 `develop` 없음, 로컬 `develop`은
+> `upstream/develop`을 직접 추적). 그래서 feature 브랜치에서
+> `upstream/develop`으로 바로 rebase한다.
+
+**예시**: 1.13.0 → 1.14.0
 
 ```powershell
 cd D:\development\personal\claude-code-history-viewer-fork
 
-# 1) 업스트림 최신 가져오기
+# 1) upstream 동기화 + rebase
 git fetch upstream
-
-# 2) feature 브랜치 rebase
 git checkout feature/ditcodeagent-provider
-git rebase upstream/develop
-git push --force-with-lease    # rebase 후라 force-with-lease 필요
+git rebase upstream/develop          # 충돌 시 §2 참고
+
+# 2) 버전 bump
+#    단순 tag만 달면 latest.json의 version이 안 올라가 Tauri 업데이터가
+#    새 버전으로 인식하지 못한다. 반드시 npm version + just sync-version.
+npm version 1.14.0 --no-git-tag-version    # patch면 1.13.1
+just sync-version                          # Cargo.toml + tauri.conf.json 동기화
+
+# 3) release commit + tag + push
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "chore: release v1.14.0"
+git push --force-with-lease                # rebase 결과 + 새 commit 한 번에
+git tag v1.14.0
+git push origin v1.14.0                    # 이 push가 GitHub Actions trigger
+
+# 4) ~15분 후 자동 빌드 완료. 모니터링 + 검증:
+gh run watch -R minju-kim98/claude-code-history-viewer-fork
+gh release view v1.14.0 -R minju-kim98/claude-code-history-viewer-fork
+#    release에 다음 5종 첨부 확인:
+#    - *_x64-setup.exe + .sig    (NSIS 설치본 + 서명)
+#    - *_x64_en-US.msi + .sig    (MSI 설치본 + 서명)
+#    - *_x64-portable.zip        (휴대용)
+#    - latest.json               (Tauri 업데이터 메타데이터)
 ```
 
-### 머지 충돌 가능 지점
+**팀원 경험**: 아무 작업도 필요 없다. 앱 실행 시 `useUpdater.ts`가 endpoint
+(`latest.json`)를 폴링하고 새 버전 발견 시 `SimpleUpdateModal` 팝업이 뜬다.
+"업데이트" 클릭 → 다운로드 → minisign 서명 검증 → 설치 → 재시작.
+
+업데이트 주기는 자유. 업스트림에 큰 기능 추가가 있을 때만 받아도 충분하다.
+
+### ⚠️ 운영 시 반드시 지킬 두 가지
+
+1. **`.tauri/` 폴더 외부 백업 필수** — `cchv-fork.key`, `cchv-fork.key.pub`,
+   `key-password.txt`. 분실하면 자동 업데이트가 영구 깨지고 팀원 전원 재설치
+   해야 한다. 1Password / 회사 비밀 저장소에 보관.
+2. **버전은 항상 SemVer 단조 증가** — 1.13.0 → 1.13.1 → 1.14.0. Tauri 업데이터는
+   `>` 비교만 하므로 같은 버전 재발행 시 다운로드되지 않는다. 잘못 발행했다면
+   다음 patch 버전으로 재발행.
+
+### 신규 팀원 첫 설치
+
+자동 업데이트는 **이미 설치된 앱**부터 적용된다. 신규 팀원에게는 release 페이지
+링크를 전달:
+
+```
+https://github.com/minju-kim98/claude-code-history-viewer-fork/releases/latest
+```
+
+거기서 `*-setup.exe`를 받아 한 번 수동 설치하면, 이후 새 태그 push마다 자동으로
+받아간다. 서명 키 검증 때문에 다른 키로 만든 빌드를 쓰던 팀원은 재설치 필요.
+
+> 자동 업데이트 활성화 절차(GitHub Secrets, 키 생성)는 §7 참고. 최초 1회만 필요.
+
+---
+
+## 2. 업스트림 머지 충돌 해결
+
+`upstream` remote는 이미 설정되어 있다. rebase 시 다음 파일에서 충돌이 자주
+발생한다. 대부분 양쪽 변경 모두 보존하면 된다 — 우리 `ditcodeagent` 라인을
+upstream 추가분과 함께 살리는 식.
 
 | 파일 | 사유 |
 |---|---|
@@ -35,8 +95,7 @@ git push --force-with-lease    # rebase 후라 force-with-lease 필요
 | `src/components/ProjectTree/index.tsx` | `providerCounts` 초기화 객체 |
 | `src/i18n/locales/{en,ko,ja,zh-CN,zh-TW}/common.json` | provider 키 |
 
-대부분 양쪽 변경 모두 보존하면 된다. 우리 `ditcodeagent` 라인을 upstream
-추가분과 함께 살리는 식.
+자세한 변경 위치는 §6 참고.
 
 ### i18n 타입 재생성
 
@@ -50,10 +109,12 @@ pnpm run i18n:validate
 
 ---
 
-## 2. Production 빌드
+## 3. 로컬 Production 빌드 (수동 / 디버깅용)
 
-평소 사용은 production 빌드 `.exe`로 설치해 일반 앱처럼 쓴다.
-`pnpm exec tauri dev`는 개발용(느림 + Vite + 콘솔).
+자동 업데이트가 정상이면 GitHub Actions가 빌드해주므로 로컬 빌드는 평소엔
+불필요하다. 자동 빌드 fail 디버깅이나 머지 전 사전 검증할 때만 쓴다.
+`pnpm exec tauri dev`는 개발용(느림 + Vite + 콘솔), 평소 사용은 production
+빌드 `.exe`로 설치해 일반 앱처럼 쓴다.
 
 ```powershell
 cd D:\development\personal\claude-code-history-viewer-fork
@@ -61,8 +122,8 @@ $env:CARGO_BUILD_JOBS=2
 pnpm exec tauri build
 ```
 
-- 첫 빌드: **30 분 ~ 1 시간** (release optimization)
-- 이후 incremental: 5 ~ 10 분
+- 첫 빌드: **30분 ~ 1시간** (release optimization)
+- 이후 incremental: 5 ~ 10분
 - `CARGO_BUILD_JOBS=2`로 메모리 안전성 확보. 더 빠른 머신이면 `4` 가능, OOM 나면 `1`.
 
 ### 결과물 위치
@@ -75,98 +136,14 @@ pnpm exec tauri build
 | `claude-code-history-viewer_X.Y.Z_x64_en-US.msi` | `bundle/msi/` | 회사 IT 정책상 MSI 필요할 때 |
 | `claude-code-history-viewer.exe` | `target/release/` | portable (의존성 위험, 비추) |
 
----
-
-## 3. .exe 설치
+### .exe 설치
 
 1. `bundle/nsis/*-setup.exe` 더블클릭
 2. 설치 진행 → 시작 메뉴에 "Claude Code History Viewer" 등록
 3. 평소엔 시작 메뉴에서 실행
 
-### 업데이트 시
-
-#### 방법 A — 자동 업데이트 (권장, 월간 운영 흐름)
-
-`v*` 태그를 푸시하면 GitHub Actions(`.github/workflows/fork-release.yml`)가
-Windows 설치본을 빌드해 fork 저장소의 release에 업로드한다. 이미 설치된
-팀원의 앱은 Tauri 업데이터가 `latest.json`을 보고 자동으로 새 버전을 받는다.
-
-**월간 릴리즈 한 사이클** (예: 1.13.0 → 1.14.0):
-
-> 이 fork는 default branch가 `feature/ditcodeagent-provider`고 origin에 `develop`이
-> 없다. 로컬 `develop`은 `upstream/develop`을 직접 추적하므로 `git checkout develop`
-> 단계는 실질 no-op이라 생략한다. feature 브랜치에서 `upstream/develop`으로 바로
-> rebase한다.
-
-```powershell
-cd D:\development\personal\claude-code-history-viewer-fork
-
-# 1) upstream 최신 받기
-git fetch upstream
-
-# 2) feature 브랜치에서 직접 rebase + 충돌 해결
-git checkout feature/ditcodeagent-provider
-git rebase upstream/develop
-# 충돌 시 §1 "머지 충돌 가능 지점" 표 참고
-git push --force-with-lease
-
-# 4) 버전 bump (핵심! 단순 tag만 달면 latest.json의 version이 안 올라가
-#    Tauri 업데이터가 새 버전으로 인식하지 못한다)
-npm version 1.14.0 --no-git-tag-version    # patch면 1.13.1
-just sync-version                          # Cargo.toml + tauri.conf.json 동기화
-
-# 5) commit + tag + push
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "chore: release v1.14.0"
-git push
-git tag v1.14.0
-git push origin v1.14.0
-
-# 6) ~15분 후 자동 빌드 완료. 진행 상황 모니터링:
-gh run watch -R minju-kim98/claude-code-history-viewer-fork
-
-# 7) 빌드 끝나면 release 페이지에 5종 첨부 확인:
-gh release view v1.14.0 -R minju-kim98/claude-code-history-viewer-fork
-#    - *_x64-setup.exe + .sig
-#    - *_x64-portable.zip
-#    - *_x64_en-US.msi + .sig
-#    - latest.json
-```
-
-**팀원 경험**: 아무 작업도 필요 없다.
-- 앱 실행 시 `useUpdater.ts`가 endpoint(`latest.json`)를 폴링한다 (또는 설정
-  메뉴의 "업데이트 확인" 클릭)
-- 새 버전 발견 → `SimpleUpdateModal` 팝업
-- "업데이트" 클릭 → 다운로드 → minisign 서명 검증 → 설치 → 재시작
-
-> 자동 업데이트 활성화 절차(GitHub Secrets, 키 생성 등)는 §8 참고. 최초 1회만 필요.
-
-##### ⚠️ 운영 시 반드시 지킬 두 가지
-
-1. **`.tauri/` 폴더 외부 백업 필수** — `cchv-fork.key`, `cchv-fork.key.pub`,
-   `key-password.txt`. 분실하면 자동 업데이트가 영구 깨지고 팀원 전원 재설치
-   해야 한다. 1Password / 회사 비밀 저장소에 보관.
-2. **버전은 항상 SemVer 단조 증가** — 1.13.0 → 1.13.1 → 1.14.0. Tauri 업데이터는
-   `>` 비교만 하므로 같은 버전 재발행 시 다운로드되지 않는다. 잘못 발행했다면
-   다음 patch 버전으로 재발행.
-
-##### 첫 설치본 공유
-
-자동 업데이트는 **이미 설치된 앱**부터 적용된다. 새로 합류한 팀원에게는
-release 페이지 링크를 직접 전달:
-
-```
-https://github.com/minju-kim98/claude-code-history-viewer-fork/releases/latest
-```
-
-거기서 `*-setup.exe`를 받아 한 번 수동 설치하면, 이후 새 태그 push마다
-자동으로 받아간다. 서명 키 검증 때문에 다른 키로 만든 빌드를 쓰던 팀원은
-재설치가 필요하다.
-
-#### 방법 B — 수동 빌드 (자동 업데이트 미설정 시)
-
-업스트림 머지 + 빌드 후 새 `-setup.exe`를 그대로 더블클릭하면 기존 설치
-위에 덮어쓰기 가능. 별도 uninstall 불필요.
+새 `-setup.exe`를 그대로 더블클릭하면 기존 설치 위에 덮어쓰기 가능.
+별도 uninstall 불필요.
 
 ---
 
@@ -201,11 +178,13 @@ C 드라이브 공간도 최소 20 GB 이상 여유 유지(Windows 자체 임시
 
 ## 5. 트러블슈팅
 
+### 로컬 빌드
+
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `rustc-LLVM ERROR: out of memory` | 페이지 파일 부족 | 위 §4. 또는 `$env:CARGO_BUILD_JOBS=1` |
-| `STATUS_STACK_BUFFER_OVERRUN` | 페이지 파일 부족 | 위 §4. |
-| `os error 1455` | 페이지 파일 부족 | 위 §4. |
+| `rustc-LLVM ERROR: out of memory` | 페이지 파일 부족 | §4. 또는 `$env:CARGO_BUILD_JOBS=1` |
+| `STATUS_STACK_BUFFER_OVERRUN` | 페이지 파일 부족 | §4. |
+| `os error 1455` | 페이지 파일 부족 | §4. |
 | `can't find crate for X` (다수 crate 연속) | 이전 incomplete build 잔재 | `cd src-tauri && cargo clean` |
 | `crate X required to be available in rlib format` | incremental cache 손상 | `cargo clean` 후 재빌드 |
 | `cannot find None/Ok/Err in this scope` | OOM의 2차 증상 | 페이지 파일 fix가 root cause |
@@ -213,7 +192,18 @@ C 드라이브 공간도 최소 20 GB 이상 여유 유지(Windows 자체 임시
 | Tauri 버전 mismatch 경고 (`tauri v2.11.1 vs api v2.10.1`) | upstream develop 진행 중 alignment | **무시 가능** — 빌드/실행은 됨 |
 | `Found version mismatched` 빌드 진행 후 멈춤 | 위와 동일 | 무시하고 진행 |
 
-### 빠른 reset (마지막 수단)
+### 자동 업데이트 / GitHub Actions
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| Actions에서 `TAURI_SIGNING_PRIVATE_KEY not set` | secret 미등록 | §7.2 |
+| 자동 업데이트가 안 됨 (앱에서 "최신 버전입니다") | endpoint/pubkey가 upstream을 가리킴 | `src-tauri/tauri.conf.json` 확인 후 재빌드, 팀원 재설치 |
+| `Signature error: Failed to verify` | 구 pubkey로 설치된 앱이 새 키로 서명된 업데이트 수신 | 팀원이 release 페이지에서 새 `*-setup.exe`를 직접 받아 재설치 |
+| release는 만들어지는데 `latest.json` 없음 | `includeUpdaterJson: false`로 잘못 설정 | `fork-release.yml`에서 `includeUpdaterJson: true` 확인 |
+| `'just' is not recognized` | Windows runner에 just 미설치 | `fork-release.yml`의 `Install just` step 확인 |
+| upstream의 `updater-release.yml`이 동시 실행되어 실패 | 자동 trigger 살아있음 | 이미 `workflow_dispatch` only로 변경됨 + fork-guard 처리 |
+
+### 빠른 reset (로컬 빌드 마지막 수단)
 
 ```powershell
 cd D:\development\personal\claude-code-history-viewer-fork\src-tauri
@@ -225,20 +215,7 @@ pnpm exec tauri build
 
 ---
 
-## 6. 평소 워크플로 한 줄 요약
-
-```
-[릴리즈] npm version X.Y.Z --no-git-tag-version → just sync-version → commit → git tag vX.Y.Z → push --tags
-[수동]   pnpm exec tauri build → -setup.exe 덮어쓰기 설치 (자동 업데이트 미설정 시)
-[일상]   시작 메뉴 → "Claude Code History Viewer"
-```
-
-업데이트 주기는 자유. 업스트림에 큰 기능 추가가 있을 때만 받아도 충분하다.
-자동 업데이트가 활성화되면 팀원은 별도 작업 없이 다음 실행 시 새 버전을 받는다.
-
----
-
-## 7. fork 내 DITCodeAgent 변경 위치 (참고)
+## 6. fork 내 DITCodeAgent 변경 위치 (참고)
 
 업스트림 머지 시 충돌 해결 참고용. 모두 `ditcodeagent`/`DitCodeAgent`/`DITCodeAgent`로 검색 가능.
 
@@ -260,12 +237,12 @@ pnpm exec tauri build
 
 ---
 
-## 8. 자동 업데이트 설정 (최초 1회)
+## 7. 자동 업데이트 설정 (최초 1회)
 
 `.github/workflows/fork-release.yml`이 fork 전용 Windows 릴리즈를 빌드한다.
-첫 릴리즈 발행 전에 아래 1회성 설정이 필요하다.
+첫 릴리즈 발행 전에 아래 1회성 설정이 필요하다 (이미 완료된 상태).
 
-### 8.1. 서명 키 (이미 생성됨)
+### 7.1. 서명 키 (이미 생성됨)
 
 `pnpm tauri signer generate`로 minisign 키쌍을 발급했다. 결과물 위치:
 
@@ -287,7 +264,7 @@ pnpm exec tauri signer generate -p $pw -w .tauri/cchv-fork.key -f --ci
 **모든 팀원이 새 .exe를 재설치**해야 자동 업데이트가 다시 동작한다 (구 pubkey로
 설치된 앱은 새 키로 서명된 업데이트를 거부).
 
-### 8.2. GitHub Secrets 등록
+### 7.2. GitHub Secrets 등록
 
 `minju-kim98/claude-code-history-viewer-fork` 저장소의
 **Settings → Secrets and variables → Actions → New repository secret** 에 두 개 등록:
@@ -306,50 +283,3 @@ Get-Content .tauri/cchv-fork.key -Raw | Set-Clipboard
 Get-Content .tauri/key-password.txt -Raw | Set-Clipboard
 # 마찬가지로 붙여넣고 저장
 ```
-
-### 8.3. 첫 릴리즈 발행
-
-위 시크릿 등록 후, 태그 푸시로 릴리즈 트리거:
-
-```powershell
-# 현재 1.12.0 → 1.13.0 예시
-npm version 1.13.0 --no-git-tag-version
-just sync-version
-
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "chore: enable auto-update + release v1.13.0"
-git tag v1.13.0
-git push && git push --tags
-```
-
-진행 상황 확인:
-
-```powershell
-gh run watch --repo minju-kim98/claude-code-history-viewer-fork
-gh release view v1.13.0 --repo minju-kim98/claude-code-history-viewer-fork
-```
-
-발행된 release에 다음 파일이 첨부되어야 한다:
-
-- `Claude.Code.History.Viewer_X.Y.Z_x64-setup.exe` (NSIS 설치본)
-- `Claude.Code.History.Viewer_X.Y.Z_x64-setup.exe.sig` (Tauri 업데이터 서명)
-- `Claude.Code.History.Viewer_X.Y.Z_x64-portable.zip` (휴대용, 옵션)
-- `latest.json` (Tauri 업데이터 메타데이터)
-
-### 8.4. 팀원 첫 배포
-
-자동 업데이트는 **이미 설치된 앱**부터 적용된다. 따라서:
-
-1. 위 첫 릴리즈의 `*-setup.exe`를 팀원에게 공유 (또는 release 페이지 링크)
-2. 팀원이 한 번 수동 설치
-3. 이후 새 태그 푸시 → 팀원 앱이 자동으로 새 버전을 받음
-
-### 8.5. 트러블슈팅
-
-| 증상 | 원인 | 해결 |
-|---|---|---|
-| Actions에서 "TAURI_SIGNING_PRIVATE_KEY not set" | secret 미등록 | §8.2 |
-| 자동 업데이트가 안 됨 (앱에서 "최신 버전입니다") | endpoint 또는 pubkey가 upstream을 가리킴 | `src-tauri/tauri.conf.json` 확인 후 재빌드, 팀원 재설치 |
-| `Signature error: Failed to verify` | 구 pubkey로 설치된 앱이 새 키로 서명된 업데이트 수신 | 팀원이 release 페이지에서 새 `*-setup.exe`를 직접 받아 재설치 |
-| release는 만들어지는데 `latest.json` 없음 | `includeUpdaterJson: false`로 잘못 설정 | `fork-release.yml`에서 `includeUpdaterJson: true` 확인 |
-| upstream의 `updater-release.yml`이 동시에 실행되어 실패 | 자동 trigger가 살아있음 | 이미 `workflow_dispatch` only로 변경됨 (§§ 기존 upstream 워크플로우는 fork-guard 처리) |
