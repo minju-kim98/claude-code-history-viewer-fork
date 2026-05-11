@@ -87,27 +87,83 @@ pnpm exec tauri build
 
 ### 업데이트 시
 
-#### 방법 A — 자동 업데이트 (권장)
+#### 방법 A — 자동 업데이트 (권장, 월간 운영 흐름)
 
 `v*` 태그를 푸시하면 GitHub Actions(`.github/workflows/fork-release.yml`)가
 Windows 설치본을 빌드해 fork 저장소의 release에 업로드한다. 이미 설치된
 팀원의 앱은 Tauri 업데이터가 `latest.json`을 보고 자동으로 새 버전을 받는다.
 
-```powershell
-# 버전 결정 (예: 1.12.0 → 1.13.0)
-npm version 1.13.0 --no-git-tag-version
-just sync-version
+**월간 릴리즈 한 사이클** (예: 1.13.0 → 1.14.0):
 
+```powershell
+cd D:\development\personal\claude-code-history-viewer-fork
+
+# 1) upstream 최신 받기 (§1 참고)
+git fetch upstream
+
+# 2) (옵션) develop 동기화. develop을 별도 통합 브랜치로 안 쓴다면 생략 가능
+git checkout develop
+git merge upstream/develop
+git push
+
+# 3) feature 브랜치 rebase + 충돌 해결
+git checkout feature/ditcodeagent-provider
+git rebase upstream/develop          # 또는 git rebase develop
+# 충돌 시 §1 "머지 충돌 가능 지점" 표 참고
+git push --force-with-lease
+
+# 4) 버전 bump (핵심! 단순 tag만 달면 latest.json의 version이 안 올라가
+#    Tauri 업데이터가 새 버전으로 인식하지 못한다)
+npm version 1.14.0 --no-git-tag-version    # patch면 1.13.1
+just sync-version                          # Cargo.toml + tauri.conf.json 동기화
+
+# 5) commit + tag + push
 git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "chore: release v1.13.0"
-git tag v1.13.0
-git push && git push --tags
+git commit -m "chore: release v1.14.0"
+git push
+git tag v1.14.0
+git push origin v1.14.0
+
+# 6) ~15분 후 자동 빌드 완료. 진행 상황 모니터링:
+gh run watch -R minju-kim98/claude-code-history-viewer-fork
+
+# 7) 빌드 끝나면 release 페이지에 5종 첨부 확인:
+gh release view v1.14.0 -R minju-kim98/claude-code-history-viewer-fork
+#    - *_x64-setup.exe + .sig
+#    - *_x64-portable.zip
+#    - *_x64_en-US.msi + .sig
+#    - latest.json
 ```
 
-태그 푸시 후 5-15분이면 release가 발행되고, 팀원 앱이 다음 실행 시 (또는
-설정 → 업데이트 확인 시) 새 버전을 가져온다.
+**팀원 경험**: 아무 작업도 필요 없다.
+- 앱 실행 시 `useUpdater.ts`가 endpoint(`latest.json`)를 폴링한다 (또는 설정
+  메뉴의 "업데이트 확인" 클릭)
+- 새 버전 발견 → `SimpleUpdateModal` 팝업
+- "업데이트" 클릭 → 다운로드 → minisign 서명 검증 → 설치 → 재시작
 
-> 자동 업데이트 활성화 절차는 §8 참고. 최초 1회 GitHub Secrets 등록이 필요하다.
+> 자동 업데이트 활성화 절차(GitHub Secrets, 키 생성 등)는 §8 참고. 최초 1회만 필요.
+
+##### ⚠️ 운영 시 반드시 지킬 두 가지
+
+1. **`.tauri/` 폴더 외부 백업 필수** — `cchv-fork.key`, `cchv-fork.key.pub`,
+   `key-password.txt`. 분실하면 자동 업데이트가 영구 깨지고 팀원 전원 재설치
+   해야 한다. 1Password / 회사 비밀 저장소에 보관.
+2. **버전은 항상 SemVer 단조 증가** — 1.13.0 → 1.13.1 → 1.14.0. Tauri 업데이터는
+   `>` 비교만 하므로 같은 버전 재발행 시 다운로드되지 않는다. 잘못 발행했다면
+   다음 patch 버전으로 재발행.
+
+##### 첫 설치본 공유
+
+자동 업데이트는 **이미 설치된 앱**부터 적용된다. 새로 합류한 팀원에게는
+release 페이지 링크를 직접 전달:
+
+```
+https://github.com/minju-kim98/claude-code-history-viewer-fork/releases/latest
+```
+
+거기서 `*-setup.exe`를 받아 한 번 수동 설치하면, 이후 새 태그 push마다
+자동으로 받아간다. 서명 키 검증 때문에 다른 키로 만든 빌드를 쓰던 팀원은
+재설치가 필요하다.
 
 #### 방법 B — 수동 빌드 (자동 업데이트 미설정 시)
 
