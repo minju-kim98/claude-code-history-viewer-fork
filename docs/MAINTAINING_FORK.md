@@ -87,12 +87,32 @@ pnpm exec tauri build
 
 ### 업데이트 시
 
+#### 방법 A — 자동 업데이트 (권장)
+
+`v*` 태그를 푸시하면 GitHub Actions(`.github/workflows/fork-release.yml`)가
+Windows 설치본을 빌드해 fork 저장소의 release에 업로드한다. 이미 설치된
+팀원의 앱은 Tauri 업데이터가 `latest.json`을 보고 자동으로 새 버전을 받는다.
+
+```powershell
+# 버전 결정 (예: 1.12.0 → 1.13.0)
+npm version 1.13.0 --no-git-tag-version
+just sync-version
+
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "chore: release v1.13.0"
+git tag v1.13.0
+git push && git push --tags
+```
+
+태그 푸시 후 5-15분이면 release가 발행되고, 팀원 앱이 다음 실행 시 (또는
+설정 → 업데이트 확인 시) 새 버전을 가져온다.
+
+> 자동 업데이트 활성화 절차는 §8 참고. 최초 1회 GitHub Secrets 등록이 필요하다.
+
+#### 방법 B — 수동 빌드 (자동 업데이트 미설정 시)
+
 업스트림 머지 + 빌드 후 새 `-setup.exe`를 그대로 더블클릭하면 기존 설치
 위에 덮어쓰기 가능. 별도 uninstall 불필요.
-
-> Tauri의 자동 업데이터(`updater plugin`)는 GitHub Release의 `latest.json`을
-> 참조하는데, fork에 release를 만들지 않으므로 자동 업데이트는 동작하지
-> 않는다. **수동 빌드 → 수동 설치**가 워크플로.
 
 ---
 
@@ -154,11 +174,13 @@ pnpm exec tauri build
 ## 6. 평소 워크플로 한 줄 요약
 
 ```
-[가끔]   git fetch upstream && git merge upstream/develop → pnpm exec tauri build → -setup.exe 덮어쓰기 설치
+[릴리즈] npm version X.Y.Z --no-git-tag-version → just sync-version → commit → git tag vX.Y.Z → push --tags
+[수동]   pnpm exec tauri build → -setup.exe 덮어쓰기 설치 (자동 업데이트 미설정 시)
 [일상]   시작 메뉴 → "Claude Code History Viewer"
 ```
 
 업데이트 주기는 자유. 업스트림에 큰 기능 추가가 있을 때만 받아도 충분하다.
+자동 업데이트가 활성화되면 팀원은 별도 작업 없이 다음 실행 시 새 버전을 받는다.
 
 ---
 
@@ -181,3 +203,99 @@ pnpm exec tauri build
 - `src/components/ProjectTree/index.tsx` — `providerCounts` 초기화 객체
 - `src/i18n/locales/{en,ko,ja,zh-CN,zh-TW}/common.json` — `common.provider.ditcodeagent`
 - `src/i18n/types.generated.ts` — `pnpm run generate:i18n-types`로 재생성
+
+---
+
+## 8. 자동 업데이트 설정 (최초 1회)
+
+`.github/workflows/fork-release.yml`이 fork 전용 Windows 릴리즈를 빌드한다.
+첫 릴리즈 발행 전에 아래 1회성 설정이 필요하다.
+
+### 8.1. 서명 키 (이미 생성됨)
+
+`pnpm tauri signer generate`로 minisign 키쌍을 발급했다. 결과물 위치:
+
+| 파일 | 용도 | 비고 |
+|---|---|---|
+| `.tauri/cchv-fork.key` | private key | **commit 금지** (`.gitignore` 처리됨). 백업 필수 — 분실 시 자동 업데이트 영구 불가 |
+| `.tauri/cchv-fork.key.pub` | public key (base64) | `src-tauri/tauri.conf.json`의 `plugins.updater.pubkey`에 반영됨 |
+| `.tauri/key-password.txt` | private key 비밀번호 | **commit 금지**. 백업 필수 |
+
+새 키를 다시 만들고 싶다면 (예: 키 유출 시):
+
+```powershell
+$pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+$pw | Set-Content .tauri/key-password.txt -NoNewline
+pnpm exec tauri signer generate -p $pw -w .tauri/cchv-fork.key -f --ci
+```
+
+그 후 `.tauri/cchv-fork.key.pub` 내용으로 `tauri.conf.json`의 `pubkey`를 교체하고
+**모든 팀원이 새 .exe를 재설치**해야 자동 업데이트가 다시 동작한다 (구 pubkey로
+설치된 앱은 새 키로 서명된 업데이트를 거부).
+
+### 8.2. GitHub Secrets 등록
+
+`minju-kim98/claude-code-history-viewer-fork` 저장소의
+**Settings → Secrets and variables → Actions → New repository secret** 에 두 개 등록:
+
+| Secret name | Value 소스 |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | `.tauri/cchv-fork.key`의 **파일 내용 전체** (경로 아님) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | `.tauri/key-password.txt`의 내용 |
+
+PowerShell로 클립보드에 복사하기:
+
+```powershell
+Get-Content .tauri/cchv-fork.key -Raw | Set-Clipboard
+# GitHub Secrets 입력창에 붙여넣고 저장
+
+Get-Content .tauri/key-password.txt -Raw | Set-Clipboard
+# 마찬가지로 붙여넣고 저장
+```
+
+### 8.3. 첫 릴리즈 발행
+
+위 시크릿 등록 후, 태그 푸시로 릴리즈 트리거:
+
+```powershell
+# 현재 1.12.0 → 1.13.0 예시
+npm version 1.13.0 --no-git-tag-version
+just sync-version
+
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "chore: enable auto-update + release v1.13.0"
+git tag v1.13.0
+git push && git push --tags
+```
+
+진행 상황 확인:
+
+```powershell
+gh run watch --repo minju-kim98/claude-code-history-viewer-fork
+gh release view v1.13.0 --repo minju-kim98/claude-code-history-viewer-fork
+```
+
+발행된 release에 다음 파일이 첨부되어야 한다:
+
+- `Claude.Code.History.Viewer_X.Y.Z_x64-setup.exe` (NSIS 설치본)
+- `Claude.Code.History.Viewer_X.Y.Z_x64-setup.exe.sig` (Tauri 업데이터 서명)
+- `Claude.Code.History.Viewer_X.Y.Z_x64-portable.zip` (휴대용, 옵션)
+- `latest.json` (Tauri 업데이터 메타데이터)
+
+### 8.4. 팀원 첫 배포
+
+자동 업데이트는 **이미 설치된 앱**부터 적용된다. 따라서:
+
+1. 위 첫 릴리즈의 `*-setup.exe`를 팀원에게 공유 (또는 release 페이지 링크)
+2. 팀원이 한 번 수동 설치
+3. 이후 새 태그 푸시 → 팀원 앱이 자동으로 새 버전을 받음
+
+### 8.5. 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| Actions에서 "TAURI_SIGNING_PRIVATE_KEY not set" | secret 미등록 | §8.2 |
+| 자동 업데이트가 안 됨 (앱에서 "최신 버전입니다") | endpoint 또는 pubkey가 upstream을 가리킴 | `src-tauri/tauri.conf.json` 확인 후 재빌드, 팀원 재설치 |
+| `Signature error: Failed to verify` | 구 pubkey로 설치된 앱이 새 키로 서명된 업데이트 수신 | 팀원이 release 페이지에서 새 `*-setup.exe`를 직접 받아 재설치 |
+| release는 만들어지는데 `latest.json` 없음 | `includeUpdaterJson: false`로 잘못 설정 | `fork-release.yml`에서 `includeUpdaterJson: true` 확인 |
+| upstream의 `updater-release.yml`이 동시에 실행되어 실패 | 자동 trigger가 살아있음 | 이미 `workflow_dispatch` only로 변경됨 (§§ 기존 upstream 워크플로우는 fork-guard 처리) |

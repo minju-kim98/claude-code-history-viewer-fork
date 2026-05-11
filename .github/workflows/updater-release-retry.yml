@@ -1,4 +1,7 @@
-name: Finalize Existing Release
+name: Finalize Existing Release (upstream — disabled in fork)
+
+# NOTE (fork): see fork-release.yml. This upstream workflow depends on the
+# Homebrew tap owned by upstream and is gated to the upstream repo.
 
 on:
   workflow_dispatch:
@@ -13,6 +16,7 @@ permissions:
 
 jobs:
   finalize-release:
+    if: github.repository == 'jhlee0409/claude-code-history-viewer'
     runs-on: ubuntu-latest
     steps:
       - name: Generate and upload latest.json

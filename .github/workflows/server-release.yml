@@ -3,18 +3,22 @@
 #
 # The server binary embeds frontend assets via rust-embed, producing a single
 # self-contained file with no external dependencies on dist/.
-name: Server Release
+#
+# NOTE (fork): Disabled — this fork only ships the Windows desktop installer via
+# `fork-release.yml`. The upstream Homebrew tap referenced here is not owned by
+# this fork. Re-enable by restoring the `push` trigger if you ever ship the
+# headless server binary from the fork.
+name: Server Release (upstream — disabled in fork)
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build-server:
+    if: github.repository == 'jhlee0409/claude-code-history-viewer'
     strategy:
       fail-fast: false
       matrix:
