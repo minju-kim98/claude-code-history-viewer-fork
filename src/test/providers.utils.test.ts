@@ -45,6 +45,7 @@ describe("providers utils", () => {
       "cline",
       "codex",
       "cursor",
+      "ditcodeagent",
       "forgecode",
       "gemini",
       "opencode",

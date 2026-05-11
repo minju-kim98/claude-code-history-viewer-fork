@@ -6,6 +6,7 @@ pub mod claude;
 pub mod cline;
 pub mod codex;
 pub mod cursor;
+pub mod ditcodeagent;
 pub mod forgecode;
 pub mod gemini;
 pub mod opencode;
@@ -23,6 +24,7 @@ pub enum ProviderId {
     ForgeCode,
     OpenCode,
     Antigravity,
+    DitCodeAgent,
 }
 
 impl ProviderId {
@@ -37,6 +39,7 @@ impl ProviderId {
             Self::ForgeCode => "forgecode",
             Self::OpenCode => "opencode",
             Self::Antigravity => "antigravity",
+            Self::DitCodeAgent => "ditcodeagent",
         }
     }
 
@@ -51,6 +54,7 @@ impl ProviderId {
             "forgecode" => Some(Self::ForgeCode),
             "opencode" => Some(Self::OpenCode),
             "antigravity" => Some(Self::Antigravity),
+            "ditcodeagent" => Some(Self::DitCodeAgent),
             _ => None,
         }
     }
@@ -66,6 +70,7 @@ impl ProviderId {
             Self::ForgeCode => "ForgeCode",
             Self::OpenCode => "OpenCode",
             Self::Antigravity => "Antigravity",
+            Self::DitCodeAgent => "DITCodeAgent",
         }
     }
 }
@@ -108,6 +113,9 @@ pub fn detect_providers() -> Vec<ProviderInfo> {
         providers.push(info);
     }
     if let Some(info) = antigravity::detect() {
+        providers.push(info);
+    }
+    if let Some(info) = ditcodeagent::detect() {
         providers.push(info);
     }
 
