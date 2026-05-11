@@ -25,6 +25,7 @@ enum StatsProvider {
     ForgeCode,
     OpenCode,
     Antigravity,
+    DitCodeAgent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +61,7 @@ fn stats_provider_id(provider: StatsProvider) -> &'static str {
         StatsProvider::ForgeCode => "forgecode",
         StatsProvider::OpenCode => "opencode",
         StatsProvider::Antigravity => "antigravity",
+        StatsProvider::DitCodeAgent => "ditcodeagent",
     }
 }
 
@@ -211,6 +213,7 @@ fn all_stats_providers() -> HashSet<StatsProvider> {
         StatsProvider::ForgeCode,
         StatsProvider::OpenCode,
         StatsProvider::Antigravity,
+        StatsProvider::DitCodeAgent,
     ]
     .into_iter()
     .collect()
@@ -231,6 +234,7 @@ fn parse_active_stats_providers(active_providers: Option<Vec<String>>) -> HashSe
             "forgecode" => Some(StatsProvider::ForgeCode),
             "opencode" => Some(StatsProvider::OpenCode),
             "antigravity" => Some(StatsProvider::Antigravity),
+            "ditcodeagent" => Some(StatsProvider::DitCodeAgent),
             _ => {
                 unknown.push(provider);
                 None
@@ -258,6 +262,8 @@ fn detect_project_provider(project_path: &str) -> StatsProvider {
         StatsProvider::OpenCode
     } else if is_antigravity_path(project_path) {
         StatsProvider::Antigravity
+    } else if project_path.starts_with("ditcodeagent://") {
+        StatsProvider::DitCodeAgent
     } else {
         StatsProvider::Claude
     }
@@ -271,6 +277,10 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
 
     if is_antigravity_path(session_path) {
         return StatsProvider::Antigravity;
+    }
+
+    if is_ditcodeagent_path(session_path) {
+        return StatsProvider::DitCodeAgent;
     }
 
     if session_path.starts_with("forgecode://") || session_path.starts_with("forgecode-db://") {
@@ -292,6 +302,15 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
     } else {
         StatsProvider::Claude
     }
+}
+
+fn is_ditcodeagent_path(path: &str) -> bool {
+    if path.starts_with("ditcodeagent://") {
+        return true;
+    }
+    providers::ditcodeagent::get_base_path()
+        .map(|base| Path::new(path).starts_with(Path::new(&base).join("tmp")))
+        .unwrap_or(false)
 }
 
 fn is_antigravity_path(path: &str) -> bool {
@@ -965,6 +984,7 @@ fn collect_provider_global_file_stats(
         StatsProvider::ForgeCode => providers::forgecode::scan_projects().unwrap_or_default(),
         StatsProvider::OpenCode => providers::opencode::scan_projects().unwrap_or_default(),
         StatsProvider::Antigravity => providers::antigravity::scan_projects().unwrap_or_default(),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::scan_projects().unwrap_or_default(),
         StatsProvider::Claude => Vec::new(),
     };
 
@@ -973,6 +993,7 @@ fn collect_provider_global_file_stats(
         StatsProvider::ForgeCode => "forgecode",
         StatsProvider::OpenCode => "opencode",
         StatsProvider::Antigravity => "antigravity",
+        StatsProvider::DitCodeAgent => "ditcodeagent",
         StatsProvider::Claude => "claude",
     };
 
@@ -989,6 +1010,9 @@ fn collect_provider_global_file_stats(
             StatsProvider::OpenCode => providers::opencode::load_sessions(&project.path, false),
             StatsProvider::Antigravity => {
                 providers::antigravity::load_sessions(&project.path, false)
+            }
+            StatsProvider::DitCodeAgent => {
+                providers::ditcodeagent::load_sessions(&project.path, false)
             }
             StatsProvider::Claude => Ok(Vec::new()),
         }
@@ -1008,6 +1032,7 @@ fn collect_provider_global_file_stats(
                 StatsProvider::ForgeCode => providers::forgecode::load_messages(file_path),
                 StatsProvider::OpenCode => providers::opencode::load_messages(file_path),
                 StatsProvider::Antigravity => providers::antigravity::load_messages(file_path),
+                StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(file_path),
                 StatsProvider::Claude => Ok(Vec::new()),
             }
             .unwrap_or_default();
@@ -1595,6 +1620,17 @@ fn resolve_provider_project_name(provider: StatsProvider, project_path: &str) ->
             }
             "Antigravity".to_string()
         }
+        StatsProvider::DitCodeAgent => {
+            if let Ok(projects) = providers::ditcodeagent::scan_projects() {
+                if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
+                    return project.name;
+                }
+            }
+            project_path
+                .strip_prefix("ditcodeagent://")
+                .unwrap_or(project_path)
+                .to_string()
+        }
     }
 }
 
@@ -1634,6 +1670,7 @@ fn resolve_provider_project_name_from_session(
             "codex".to_string()
         }
         StatsProvider::Antigravity => "Antigravity".to_string(),
+        StatsProvider::DitCodeAgent => "DITCodeAgent".to_string(),
         StatsProvider::Claude => "unknown".to_string(),
     }
 }
@@ -1648,6 +1685,7 @@ fn load_provider_sessions_for_stats(
         StatsProvider::ForgeCode => providers::forgecode::load_sessions(project_path, false),
         StatsProvider::OpenCode => providers::opencode::load_sessions(project_path, false),
         StatsProvider::Antigravity => providers::antigravity::load_sessions(project_path, false),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::load_sessions(project_path, false),
         StatsProvider::Claude => {
             Err("Claude sessions are handled by legacy stats path".to_string())
         }
@@ -1664,6 +1702,7 @@ fn load_provider_messages_for_stats(
         StatsProvider::ForgeCode => providers::forgecode::load_messages(&session.file_path),
         StatsProvider::OpenCode => providers::opencode::load_messages(&session.file_path),
         StatsProvider::Antigravity => providers::antigravity::load_messages(&session.file_path),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(&session.file_path),
         StatsProvider::Claude => {
             Err("Claude messages are handled by legacy stats path".to_string())
         }
@@ -2405,6 +2444,7 @@ pub async fn get_session_token_stats(
             StatsProvider::ForgeCode => providers::forgecode::load_messages(&session_path)?,
             StatsProvider::OpenCode => providers::opencode::load_messages(&session_path)?,
             StatsProvider::Antigravity => providers::antigravity::load_messages(&session_path)?,
+            StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(&session_path)?,
             StatsProvider::Claude => Vec::new(),
         };
 
