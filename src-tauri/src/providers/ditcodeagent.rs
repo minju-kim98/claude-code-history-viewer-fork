@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Detect DITCodeAgent installation
+/// Detect `DITCodeAgent` installation
 pub fn detect() -> Option<ProviderInfo> {
     let base = get_base_path()?;
     let tmp_dir = PathBuf::from(&base).join("tmp");
@@ -18,7 +18,7 @@ pub fn detect() -> Option<ProviderInfo> {
     })
 }
 
-/// Get the base path for DITCodeAgent data (~/.ditcodeagent)
+/// Get the base path for `DITCodeAgent` data (~/.ditcodeagent)
 pub fn get_base_path() -> Option<String> {
     if let Ok(val) = std::env::var("DITCODEAGENT_HOME") {
         let p = PathBuf::from(&val);
@@ -29,7 +29,7 @@ pub fn get_base_path() -> Option<String> {
     dirs::home_dir().map(|h| h.join(".ditcodeagent").to_string_lossy().to_string())
 }
 
-/// Scan for all DITCodeAgent projects from a specific base path.
+/// Scan for all `DITCodeAgent` projects from a specific base path.
 pub fn scan_projects_from_path(base_path: &str) -> Result<Vec<ClaudeProject>, String> {
     crate::utils::require_absolute_path(base_path, "DITCodeAgent base path")?;
 
@@ -116,13 +116,13 @@ pub fn scan_projects_from_path(base_path: &str) -> Result<Vec<ClaudeProject>, St
     Ok(projects)
 }
 
-/// Scan for all DITCodeAgent projects from the default location.
+/// Scan for all `DITCodeAgent` projects from the default location.
 pub fn scan_projects() -> Result<Vec<ClaudeProject>, String> {
     let base = get_base_path().ok_or("Could not determine DITCodeAgent base path")?;
     scan_projects_from_path(&base)
 }
 
-/// Load sessions for a DITCodeAgent project
+/// Load sessions for a `DITCodeAgent` project
 pub fn load_sessions(
     project_path: &str,
     _exclude_sidechain: bool,
@@ -202,7 +202,7 @@ pub fn load_sessions(
     Ok(sessions)
 }
 
-/// Load messages from a DITCodeAgent session file
+/// Load messages from a `DITCodeAgent` session file
 pub fn load_messages(session_path: &str) -> Result<Vec<ClaudeMessage>, String> {
     // W-1: validate path is within DITCodeAgent data directory
     let path = validate_session_path(session_path)?;
@@ -236,7 +236,7 @@ pub fn load_messages(session_path: &str) -> Result<Vec<ClaudeMessage>, String> {
     Ok(result)
 }
 
-/// Search across all DITCodeAgent sessions
+/// Search across all `DITCodeAgent` sessions
 pub fn search(query: &str, limit: usize) -> Result<Vec<ClaudeMessage>, String> {
     let base = get_base_path().ok_or("Could not determine DITCodeAgent base path")?;
     let tmp_dir = PathBuf::from(&base).join("tmp");
