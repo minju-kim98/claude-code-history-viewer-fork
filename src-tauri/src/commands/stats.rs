@@ -26,6 +26,10 @@ enum StatsProvider {
     OpenCode,
     Antigravity,
     DitCodeAgent,
+    Aider,
+    Cline,
+    Cursor,
+    Gemini,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +66,10 @@ fn stats_provider_id(provider: StatsProvider) -> &'static str {
         StatsProvider::OpenCode => "opencode",
         StatsProvider::Antigravity => "antigravity",
         StatsProvider::DitCodeAgent => "ditcodeagent",
+        StatsProvider::Aider => "aider",
+        StatsProvider::Cline => "cline",
+        StatsProvider::Cursor => "cursor",
+        StatsProvider::Gemini => "gemini",
     }
 }
 
@@ -216,6 +224,10 @@ fn all_stats_providers() -> HashSet<StatsProvider> {
         StatsProvider::OpenCode,
         StatsProvider::Antigravity,
         StatsProvider::DitCodeAgent,
+        StatsProvider::Aider,
+        StatsProvider::Cline,
+        StatsProvider::Cursor,
+        StatsProvider::Gemini,
     ]
     .into_iter()
     .collect()
@@ -237,6 +249,10 @@ fn parse_active_stats_providers(active_providers: Option<Vec<String>>) -> HashSe
             "opencode" => Some(StatsProvider::OpenCode),
             "antigravity" => Some(StatsProvider::Antigravity),
             "ditcodeagent" => Some(StatsProvider::DitCodeAgent),
+            "aider" => Some(StatsProvider::Aider),
+            "cline" => Some(StatsProvider::Cline),
+            "cursor" => Some(StatsProvider::Cursor),
+            "gemini" => Some(StatsProvider::Gemini),
             _ => {
                 unknown.push(provider);
                 None
@@ -266,6 +282,14 @@ fn detect_project_provider(project_path: &str) -> StatsProvider {
         StatsProvider::Antigravity
     } else if project_path.starts_with("ditcodeagent://") {
         StatsProvider::DitCodeAgent
+    } else if project_path.starts_with("aider://") {
+        StatsProvider::Aider
+    } else if project_path.starts_with("cline://") {
+        StatsProvider::Cline
+    } else if project_path.starts_with("cursor://") {
+        StatsProvider::Cursor
+    } else if project_path.starts_with("gemini://") {
+        StatsProvider::Gemini
     } else {
         StatsProvider::Claude
     }
@@ -289,6 +313,14 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
         return StatsProvider::ForgeCode;
     }
 
+    if session_path.starts_with("cursor://") {
+        return StatsProvider::Cursor;
+    }
+
+    if is_gemini_path(session_path) {
+        return StatsProvider::Gemini;
+    }
+
     let is_rollout = PathBuf::from(session_path)
         .file_name()
         .and_then(|name| name.to_str())
@@ -304,6 +336,15 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
     } else {
         StatsProvider::Claude
     }
+}
+
+fn is_gemini_path(path: &str) -> bool {
+    if path.starts_with("gemini://") {
+        return true;
+    }
+    providers::gemini::get_base_path()
+        .map(|base| Path::new(path).starts_with(Path::new(&base).join("tmp")))
+        .unwrap_or(false)
 }
 
 fn is_ditcodeagent_path(path: &str) -> bool {
@@ -990,17 +1031,14 @@ fn collect_provider_global_file_stats(
         StatsProvider::OpenCode => providers::opencode::scan_projects().unwrap_or_default(),
         StatsProvider::Antigravity => providers::antigravity::scan_projects().unwrap_or_default(),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::scan_projects().unwrap_or_default(),
+        StatsProvider::Aider => providers::aider::scan_projects().unwrap_or_default(),
+        StatsProvider::Cline => providers::cline::scan_projects().unwrap_or_default(),
+        StatsProvider::Cursor => providers::cursor::scan_projects().unwrap_or_default(),
+        StatsProvider::Gemini => providers::gemini::scan_projects().unwrap_or_default(),
         StatsProvider::Claude => Vec::new(),
     };
 
-    let provider_tag = match provider {
-        StatsProvider::Codex => "codex",
-        StatsProvider::ForgeCode => "forgecode",
-        StatsProvider::OpenCode => "opencode",
-        StatsProvider::Antigravity => "antigravity",
-        StatsProvider::DitCodeAgent => "ditcodeagent",
-        StatsProvider::Claude => "claude",
-    };
+    let provider_tag = stats_provider_id(provider);
 
     // Collect all (project_display_name, session_file_path) pairs first
     let mut session_tasks: Vec<(String, String)> = Vec::new();
@@ -1019,6 +1057,10 @@ fn collect_provider_global_file_stats(
             StatsProvider::DitCodeAgent => {
                 providers::ditcodeagent::load_sessions(&project.path, false)
             }
+            StatsProvider::Aider => providers::aider::load_sessions(&project.path, false),
+            StatsProvider::Cline => providers::cline::load_sessions(&project.path, false),
+            StatsProvider::Cursor => providers::cursor::load_sessions(&project.path, false),
+            StatsProvider::Gemini => providers::gemini::load_sessions(&project.path, false),
             StatsProvider::Claude => Ok(Vec::new()),
         }
         .unwrap_or_default();
@@ -1038,6 +1080,10 @@ fn collect_provider_global_file_stats(
                 StatsProvider::OpenCode => providers::opencode::load_messages(file_path),
                 StatsProvider::Antigravity => providers::antigravity::load_messages(file_path),
                 StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(file_path),
+                StatsProvider::Aider => providers::aider::load_messages(file_path),
+                StatsProvider::Cline => providers::cline::load_messages(file_path),
+                StatsProvider::Cursor => providers::cursor::load_messages(file_path),
+                StatsProvider::Gemini => providers::gemini::load_messages(file_path),
                 StatsProvider::Claude => Ok(Vec::new()),
             }
             .unwrap_or_default();
@@ -1656,6 +1702,50 @@ fn resolve_provider_project_name(provider: StatsProvider, project_path: &str) ->
                 .unwrap_or(project_path)
                 .to_string()
         }
+        StatsProvider::Aider => {
+            if let Ok(projects) = providers::aider::scan_projects() {
+                if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
+                    return project.name;
+                }
+            }
+            project_path
+                .strip_prefix("aider://")
+                .unwrap_or(project_path)
+                .to_string()
+        }
+        StatsProvider::Cline => {
+            if let Ok(projects) = providers::cline::scan_projects() {
+                if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
+                    return project.name;
+                }
+            }
+            project_path
+                .strip_prefix("cline://")
+                .unwrap_or(project_path)
+                .to_string()
+        }
+        StatsProvider::Cursor => {
+            if let Ok(projects) = providers::cursor::scan_projects() {
+                if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
+                    return project.name;
+                }
+            }
+            project_path
+                .strip_prefix("cursor://")
+                .unwrap_or(project_path)
+                .to_string()
+        }
+        StatsProvider::Gemini => {
+            if let Ok(projects) = providers::gemini::scan_projects() {
+                if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
+                    return project.name;
+                }
+            }
+            project_path
+                .strip_prefix("gemini://")
+                .unwrap_or(project_path)
+                .to_string()
+        }
     }
 }
 
@@ -1696,6 +1786,10 @@ fn resolve_provider_project_name_from_session(
         }
         StatsProvider::Antigravity => "Antigravity".to_string(),
         StatsProvider::DitCodeAgent => "DITCodeAgent".to_string(),
+        StatsProvider::Aider => "Aider".to_string(),
+        StatsProvider::Cline => "Cline".to_string(),
+        StatsProvider::Cursor => "Cursor".to_string(),
+        StatsProvider::Gemini => "Gemini".to_string(),
         StatsProvider::Claude => "unknown".to_string(),
     }
 }
@@ -1711,6 +1805,10 @@ fn load_provider_sessions_for_stats(
         StatsProvider::OpenCode => providers::opencode::load_sessions(project_path, false),
         StatsProvider::Antigravity => providers::antigravity::load_sessions(project_path, false),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::load_sessions(project_path, false),
+        StatsProvider::Aider => providers::aider::load_sessions(project_path, false),
+        StatsProvider::Cline => providers::cline::load_sessions(project_path, false),
+        StatsProvider::Cursor => providers::cursor::load_sessions(project_path, false),
+        StatsProvider::Gemini => providers::gemini::load_sessions(project_path, false),
         StatsProvider::Claude => {
             Err("Claude sessions are handled by legacy stats path".to_string())
         }
@@ -1728,6 +1826,10 @@ fn load_provider_messages_for_stats(
         StatsProvider::OpenCode => providers::opencode::load_messages(&session.file_path),
         StatsProvider::Antigravity => providers::antigravity::load_messages(&session.file_path),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(&session.file_path),
+        StatsProvider::Aider => providers::aider::load_messages(&session.file_path),
+        StatsProvider::Cline => providers::cline::load_messages(&session.file_path),
+        StatsProvider::Cursor => providers::cursor::load_messages(&session.file_path),
+        StatsProvider::Gemini => providers::gemini::load_messages(&session.file_path),
         StatsProvider::Claude => {
             Err("Claude messages are handled by legacy stats path".to_string())
         }
@@ -2473,6 +2575,10 @@ pub async fn get_session_token_stats(
             StatsProvider::OpenCode => providers::opencode::load_messages(&session_path)?,
             StatsProvider::Antigravity => providers::antigravity::load_messages(&session_path)?,
             StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(&session_path)?,
+            StatsProvider::Aider => providers::aider::load_messages(&session_path)?,
+            StatsProvider::Cline => providers::cline::load_messages(&session_path)?,
+            StatsProvider::Cursor => providers::cursor::load_messages(&session_path)?,
+            StatsProvider::Gemini => providers::gemini::load_messages(&session_path)?,
             StatsProvider::Claude => Vec::new(),
         };
 
@@ -3337,6 +3443,41 @@ pub async fn get_global_stats_summary(
             collect_provider_global_file_stats(StatsProvider::Antigravity, mode, s_ref, e_ref);
         project_names.extend(antigravity_projects);
         file_stats.extend(antigravity_stats);
+    }
+
+    if providers_to_include.contains(&StatsProvider::DitCodeAgent) {
+        let (ditcodeagent_stats, ditcodeagent_projects) =
+            collect_provider_global_file_stats(StatsProvider::DitCodeAgent, mode, s_ref, e_ref);
+        project_names.extend(ditcodeagent_projects);
+        file_stats.extend(ditcodeagent_stats);
+    }
+
+    if providers_to_include.contains(&StatsProvider::Aider) {
+        let (aider_stats, aider_projects) =
+            collect_provider_global_file_stats(StatsProvider::Aider, mode, s_ref, e_ref);
+        project_names.extend(aider_projects);
+        file_stats.extend(aider_stats);
+    }
+
+    if providers_to_include.contains(&StatsProvider::Cline) {
+        let (cline_stats, cline_projects) =
+            collect_provider_global_file_stats(StatsProvider::Cline, mode, s_ref, e_ref);
+        project_names.extend(cline_projects);
+        file_stats.extend(cline_stats);
+    }
+
+    if providers_to_include.contains(&StatsProvider::Cursor) {
+        let (cursor_stats, cursor_projects) =
+            collect_provider_global_file_stats(StatsProvider::Cursor, mode, s_ref, e_ref);
+        project_names.extend(cursor_projects);
+        file_stats.extend(cursor_stats);
+    }
+
+    if providers_to_include.contains(&StatsProvider::Gemini) {
+        let (gemini_stats, gemini_projects) =
+            collect_provider_global_file_stats(StatsProvider::Gemini, mode, s_ref, e_ref);
+        project_names.extend(gemini_projects);
+        file_stats.extend(gemini_stats);
     }
 
     // When date filtering is active, exclude sessions that ended up with zero messages
