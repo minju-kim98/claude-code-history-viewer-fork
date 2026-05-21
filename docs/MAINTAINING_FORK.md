@@ -283,3 +283,91 @@ Get-Content .tauri/cchv-fork.key -Raw | Set-Clipboard
 Get-Content .tauri/key-password.txt -Raw | Set-Clipboard
 # 마찬가지로 붙여넣고 저장
 ```
+
+---
+
+## 8. DITCodeAgent 토큰 백필 스크립트
+
+`scripts/ditcodeagent_backfill_tokens.py` — DITCodeAgent 로컬 세션 로그의
+`tokens` 필드를 채워 viewer의 토큰/비용 통계가 0으로 뜨는 문제를 우회한다.
+
+### 배경
+
+DITCodeAgent CLI는 세션 파일
+(`~/.ditcodeagent/tmp/<project>/chats/session-*.json`)의 assistant(`type: "gemini"`)
+메시지에 `tokens`를 **항상 `null`로** 남긴다. 그래서 viewer가 이 provider의
+사용량/비용을 전부 0으로 표시한다. 실제 사용량은 애초에 기록되지 않아 복원이
+불가능하므로, 이 스크립트는 Anthropic의 `POST /v1/messages/count_tokens`로
+**근사치를 재구성**해 `null` 자리를 채운다.
+
+> ⚠️ **근사치**다. 시스템 프롬프트·툴 정의가 로그에 없고 실제 캐시 hit/miss도
+> 알 수 없어, "차트가 0 대신 의미 있는 추정치를 보여준다" 수준이지 청구서 수준
+> 정확도가 아니다. 이 스크립트로 채운 값은 viewer 표시에만 쓰고 비용 정산 근거로
+> 쓰지 않는다.
+
+채워지는 값 (assistant 메시지마다):
+
+| 필드 | 의미 |
+|---|---|
+| `input` | 직전 응답 이후 새로 들어간 user/tool 턴 토큰 |
+| `cached` | 모델이 이미 본 이전 컨텍스트 토큰 (캐시 동작 모방 → 세션이 길어도 `input` 폭증 안 함) |
+| `output` | 그 응답이 생성한 내용 토큰 (텍스트 + thinking) |
+| `thoughts` / `tool` | 0 (viewer가 안 읽음. thinking은 `output`에 포함됨) |
+| `total` | `input + cached + output` |
+
+### 사용법
+
+```powershell
+# 0) 의존성 (선택): .env 로딩용
+pip install python-dotenv
+
+# 1) API 키 설정 — 아래 둘 중 하나
+#    (a) 레포 루트에 .env 파일 (커밋 금지, .gitignore 확인)
+#        ANTHROPIC_API_KEY=sk-ant-...
+#    (b) 환경변수 직접 설정
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+
+# 2) 키 없이 현황만 확인
+python scripts/ditcodeagent_backfill_tokens.py --scan
+
+# 3) 소규모 시험 (파일 2개만)
+python scripts/ditcodeagent_backfill_tokens.py --limit 2 --backup
+
+# 4) 전체 백필 (.bak 백업 권장)
+python scripts/ditcodeagent_backfill_tokens.py --backup
+
+# 미리보기만 (쓰기 안 함)
+python scripts/ditcodeagent_backfill_tokens.py --dry-run
+```
+
+주요 플래그: `--scan`(API 무호출 현황만), `--dry-run`(계산만, 쓰기 X),
+`--force`(이미 채워진 것도 재계산), `--backup`(`.bak` 보존), `--rpm N`(분당 호출 제한),
+`--limit N`(파일 N개만), `--root PATH`(`DITCODEAGENT_HOME` 오버라이드).
+
+### 안전성 / 멱등성
+
+- 이미 채워진 메시지는 건너뛴다 (`--force`로 강제 재계산). **주기적으로 재실행해도
+  안전** — 새로 생긴 `null`만 채운다.
+- atomic write (temp + `os.replace`), `tokens` 외 필드는 건드리지 않는다.
+- **DITCodeAgent가 해당 세션을 동시에 쓰지 않을 때** 돌릴 것.
+- 의존성 0 (표준 라이브러리만, `.env`만 `python-dotenv` 선택).
+
+### Rate limit
+
+`count_tokens`는 **무료**이고 Messages API와 **별개 한도**라 실제 사용량/예산에
+영향이 없다. 메시지당 ~1회 호출(현재 데이터 ~2,300회 수준).
+
+| Usage tier | RPM | ~2,300회 소요(스로틀 없이) |
+|---|---|---|
+| 1 | 100 | ~23분 (429 자동 백오프) |
+| 2 | 2,000 | ~1.2분 |
+| 3 | 4,000 | ~35초 |
+| 4 | 8,000 | ~17초 |
+
+Tier 1이면 `--rpm 90`으로 선제 스로틀해 429를 피한다. 어느 경우든 429/5xx는
+지수 백오프로 자동 재시도하므로 실패하지 않고 느려질 뿐이다.
+
+### 근본 해결
+
+이건 어디까지나 우회책이다. 근본 해결은 DITCodeAgent CLI가 API 응답의 usage를
+세션 로그 `tokens`에 직접 기록하는 것이며, 해당 피드백을 CLI 팀에 전달했다.
