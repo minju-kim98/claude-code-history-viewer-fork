@@ -477,7 +477,12 @@ fn convert_gemini_message(msg: &Value, session_id: &str) -> Option<ClaudeMessage
 
     match msg_type {
         "user" => Some(convert_user_message(msg, &id, session_id, &timestamp)),
-        "gemini" => Some(convert_gemini_response(msg, &id, session_id, &timestamp)),
+        // Real session logs tag assistant turns as `gemini` (DITCodeAgent is
+        // Gemini-CLI based). Accept `ditcodeagent` too in case the CLI renames
+        // the type to match its brand in a future version.
+        "gemini" | "ditcodeagent" => {
+            Some(convert_gemini_response(msg, &id, session_id, &timestamp))
+        }
         "info" | "warning" | "error" => Some(convert_system_message(
             msg, &id, session_id, &timestamp, msg_type,
         )),
