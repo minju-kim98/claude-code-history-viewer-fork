@@ -14,6 +14,24 @@ Use pnpm Package Manager.
 solely with explicit user approval (see `.claude/commands/pr-review-check.md`),
 never as a mandatory first step.
 
+### ⛔ Windows에서 `cargo test`를 돌리지 말 것 — 실제 `~/.claude`를 오염시킨다
+
+`commands::claude_settings` / `settings` / `archive` 테스트는
+`env::set_var("HOME", temp_dir)`로 홈을 격리했다고 가정한다. 그러나 **Windows의
+`dirs::home_dir()`는 `HOME`을 무시하고 `USERPROFILE`을 반환**하므로 격리가 실패하고,
+테스트가 **사용자의 진짜 `~/.claude/settings.json`을 읽고 덮어쓴다**
+(`claude_settings.rs:44`가 `home_dir().join(".claude/settings.json")`).
+관측된 피해: `settings.json`이 테스트 픽스처 `{"theme":"dark","fontSize":14}`로
+교체됨. 같은 이유로 이 테스트들은 Windows에서 항상 ~39개 실패한다 —
+"환경 문제"가 아니라 **테스트가 실제 홈을 건드린 결과**다.
+
+- Windows 로컬: `cargo fmt --check`, `cargo clippy`, `cargo check`만 실행.
+  **`cargo test`는 금지** (pre-commit hook은 fmt/clippy만 돌리므로 안전).
+- Rust 테스트 검증은 **CI(Linux)에 위임**한다. 로컬 검증이 꼭 필요하면
+  WSL/Linux 컨테이너에서 돌릴 것.
+- 특정 테스트만 필요하면 홈을 안 건드리는 모듈만 지정:
+  `cargo test providers::` (provider 테스트는 자체 env 가드를 쓴다).
+
 가독성이 높은 설계 추구
 예측 가능성이 높은 설계 추구
 높은 응집도 설계 추구
