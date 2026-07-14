@@ -32,6 +32,25 @@ never as a mandatory first step.
 - 특정 테스트만 필요하면 홈을 안 건드리는 모듈만 지정:
   `cargo test providers::` (provider 테스트는 자체 env 가드를 쓴다).
 
+#### 실제 사고 기록 (2026-07-14)
+
+`cargo test`를 3회 실행해 사용자의 `~/.claude/settings.json`을 테스트 픽스처로 **3번
+덮어썼다.** 사용자가 수동 복구한 것까지 백그라운드 테스트가 다시 뭉갰다. 대량 실패를
+"Windows 환경 문제"로 넘긴 것이 2차 피해를 키웠다 — **그 실패는 테스트가 실제 홈을
+건드리고 있다는 신호였다.**
+
+**오염됐을 때 복구 절차:**
+
+1. 먼저 **실행 중인 `cargo`/`rustc` 프로세스를 죽인다.** `TaskStop`은 셸만 끊고
+   자식 `cargo.exe`는 살아남아 복구본을 다시 덮어쓴다. `ps -W`로 PID 확인 후 종료.
+2. 원본 복구: `~/.claude`에는 `settings.json` 백업이 없다(`backups/`는 `.claude.json`
+   전용). **VS Code 로컬 히스토리**에 스냅샷이 남아 있다:
+   `%APPDATA%/Code/User/History/*/entries.json` 에서 `resource`가
+   `.claude/settings.json`인 항목을 찾아 최신 스냅샷으로 되돌린다.
+3. 스냅샷이 오래됐으면 그 이후 설치된 훅이 빠진다. `gctree scaffold --host claude-code`
+   로 gc-tree 훅을 재설치한다 (idempotent, 기존 키 보존).
+4. 관리자 권한이 필요한 복구(섀도카피 / 이전 버전)는 **사용자에게 요청**한다.
+
 가독성이 높은 설계 추구
 예측 가능성이 높은 설계 추구
 높은 응집도 설계 추구
