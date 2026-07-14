@@ -51,6 +51,8 @@ enum StatsProvider {
     Pi,
     Gemini,
     Cursor,
+    /// Fork-only. Codex-format rollouts under the `DITCodeAgent` home.
+    DitCodeAgent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +112,7 @@ fn stats_provider_id(provider: StatsProvider) -> &'static str {
         StatsProvider::Pi => "pi",
         StatsProvider::Gemini => "gemini",
         StatsProvider::Cursor => "cursor",
+        StatsProvider::DitCodeAgent => "ditcodeagent",
     }
 }
 
@@ -317,6 +320,7 @@ fn all_stats_providers() -> HashSet<StatsProvider> {
         StatsProvider::Pi,
         StatsProvider::Gemini,
         StatsProvider::Cursor,
+        StatsProvider::DitCodeAgent,
     ]
     .into_iter()
     .collect()
@@ -361,6 +365,7 @@ fn parse_active_stats_providers(active_providers: Option<Vec<String>>) -> HashSe
             "pi" => Some(StatsProvider::Pi),
             "gemini" => Some(StatsProvider::Gemini),
             "cursor" => Some(StatsProvider::Cursor),
+            "ditcodeagent" => Some(StatsProvider::DitCodeAgent),
             _ => {
                 unknown.push(provider);
                 None
@@ -410,6 +415,8 @@ fn detect_project_provider(project_path: &str) -> StatsProvider {
         StatsProvider::Vibe
     } else if project_path.starts_with("zed://") {
         StatsProvider::Zed
+    } else if project_path.starts_with("ditcodeagent://") {
+        StatsProvider::DitCodeAgent
     } else if project_path.starts_with("codex://") {
         StatsProvider::Codex
     } else if project_path.starts_with("forgecode://") {
@@ -523,6 +530,12 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
 
     if is_grok_path(session_path) {
         return StatsProvider::Grok;
+    }
+
+    // Must precede the rollout check below: DITCodeAgent rollouts are
+    // byte-identical to Codex ones and differ only by their root.
+    if is_ditcodeagent_path(session_path) {
+        return StatsProvider::DitCodeAgent;
     }
 
     if is_kimi_path(session_path) {
@@ -736,6 +749,14 @@ fn cursor_virtual_paths_match(left: &str, right: &str) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
+}
+
+/// Fork-only. `DITCodeAgent` writes Codex-format `rollout-*.jsonl`, so it can
+/// only be told apart from Codex by its home root — hence the anchored check.
+fn is_ditcodeagent_path(path: &str) -> bool {
+    providers::ditcodeagent::get_base_path()
+        .map(|root| Path::new(path).starts_with(root))
+        .unwrap_or(false)
 }
 
 /// Parse a line using simd-json (requires mutable slice)
@@ -1514,6 +1535,7 @@ fn scan_stats_projects(
         StatsProvider::Kimi => providers::kimi::scan_projects(),
         StatsProvider::Antigravity => providers::antigravity::scan_projects(),
         StatsProvider::Copilot => providers::copilot::scan_projects(),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::scan_projects(),
         StatsProvider::Ompi => providers::ompi::scan_projects(),
         StatsProvider::Pi => providers::pi::scan_projects(),
         StatsProvider::Gemini => providers::gemini::scan_projects(),
@@ -1553,6 +1575,7 @@ fn load_stats_sessions(
         StatsProvider::Kimi => providers::kimi::load_sessions(project_path, false),
         StatsProvider::Antigravity => providers::antigravity::load_sessions(project_path, false),
         StatsProvider::Copilot => providers::copilot::load_sessions(project_path, false),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::load_sessions(project_path, false),
         StatsProvider::Ompi => providers::ompi::load_sessions(project_path, false),
         StatsProvider::Pi => providers::pi::load_sessions(project_path, false),
         StatsProvider::Gemini => providers::gemini::load_sessions(project_path, false),
@@ -1590,6 +1613,7 @@ fn load_stats_messages(
         StatsProvider::Kimi => providers::kimi::load_messages(session_path),
         StatsProvider::Antigravity => providers::antigravity::load_messages(session_path),
         StatsProvider::Copilot => providers::copilot::load_messages(session_path),
+        StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(session_path),
         StatsProvider::Ompi => providers::ompi::load_messages(session_path),
         StatsProvider::Pi => providers::pi::load_messages(session_path),
         StatsProvider::Gemini => providers::gemini::load_messages(session_path),
@@ -2826,6 +2850,16 @@ fn resolve_provider_project_name(provider: StatsProvider, project_path: &str) ->
                 .unwrap_or(cwd)
                 .to_string()
         }
+        StatsProvider::DitCodeAgent => {
+            let cwd = project_path
+                .strip_prefix("ditcodeagent://")
+                .unwrap_or(project_path);
+            PathBuf::from(cwd)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(cwd)
+                .to_string()
+        }
         StatsProvider::ForgeCode => {
             if let Ok(projects) = providers::forgecode::scan_projects() {
                 if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
@@ -3034,6 +3068,20 @@ fn resolve_provider_project_name_from_session(
                 return resolve_provider_project_name(provider, &project_path);
             }
             "grok".to_string()
+        }
+        StatsProvider::DitCodeAgent => {
+            if let Ok(projects) = providers::ditcodeagent::scan_projects() {
+                for project in projects {
+                    if let Ok(sessions) =
+                        providers::ditcodeagent::load_sessions(&project.path, false)
+                    {
+                        if sessions.iter().any(|s| s.file_path == session_path) {
+                            return project.name;
+                        }
+                    }
+                }
+            }
+            "ditcodeagent".to_string()
         }
         StatsProvider::Kimi => {
             if let Some(project_dir) = Path::new(session_path).parent() {
@@ -5101,6 +5149,7 @@ pub async fn get_global_stats_summary(
         StatsProvider::Continue,
         StatsProvider::Crush,
         StatsProvider::CursorAgent,
+        StatsProvider::DitCodeAgent,
         StatsProvider::Goose,
         StatsProvider::Kiro,
         StatsProvider::Llm,

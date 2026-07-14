@@ -76,6 +76,7 @@
   "common.provider.cursor": "Cursor",
   "common.provider.cursorAgent": "Cursor Agent",
   "common.provider.detectError": "Failed to detect providers. Keeping the previous provider settings.",
+  "common.provider.ditcodeagent": "DITCodeAgent",
   "common.provider.forgecode": "ForgeCode",
   "common.provider.gemini": "Gemini CLI",
   "common.provider.goose": "Goose",

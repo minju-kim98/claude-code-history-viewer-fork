@@ -128,6 +128,10 @@ pub(crate) fn is_safe_session_path(path: &std::path::Path) -> Result<(), String>
         allowed.push(PathBuf::from(&oi_base).join("sessions"));
         allowed.push(PathBuf::from(&oi_base).join("archived_sessions"));
     }
+    if let Some(dit_base) = crate::providers::ditcodeagent::get_base_path() {
+        allowed.push(PathBuf::from(&dit_base).join("sessions"));
+        allowed.push(PathBuf::from(&dit_base).join("archived_sessions"));
+    }
     if let Some(qwen_base) = crate::providers::qwen::get_base_path() {
         allowed.push(PathBuf::from(qwen_base));
     }

@@ -240,7 +240,9 @@ describe('Tauri Configuration Tests', () => {
         config.plugins.updater.endpoints.forEach((endpoint: string) => {
           expect(endpoint).toMatch(/^https:\/\//); // HTTPS required
           expect(endpoint).toContain('github.com');
-          expect(endpoint).toContain('jhlee0409/claude-code-history-viewer');
+          // Fork-only: releases are published from the fork, so the updater must
+          // point at the fork's latest.json (signed with the fork's key).
+          expect(endpoint).toContain('minju-kim98/claude-code-history-viewer-fork');
           expect(endpoint).toContain('latest.json');
         });
       });

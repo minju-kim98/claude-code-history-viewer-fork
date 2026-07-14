@@ -76,6 +76,7 @@
   "common.provider.cursor": "Cursor",
   "common.provider.cursorAgent": "Cursor Agent",
   "common.provider.detectError": "检测提供商失败，将保留之前的提供商设置。",
+  "common.provider.ditcodeagent": "DITCodeAgent",
   "common.provider.forgecode": "ForgeCode",
   "common.provider.gemini": "Gemini CLI",
   "common.provider.goose": "Goose",

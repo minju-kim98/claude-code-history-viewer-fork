@@ -59,6 +59,7 @@ describe("providers utils", () => {
       "crush",
       "cursor",
       "cursor-agent",
+      "ditcodeagent",
       "forgecode",
       "gemini",
       "goose",

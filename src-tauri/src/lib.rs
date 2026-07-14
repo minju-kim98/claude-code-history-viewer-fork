@@ -1139,6 +1139,15 @@ fn collect_watch_paths() -> Vec<std::path::PathBuf> {
         }
     }
 
+    if let Some(dit_base) = providers::ditcodeagent::get_base_path() {
+        for sub in ["sessions", "archived_sessions"] {
+            let dir = PathBuf::from(&dit_base).join(sub);
+            if dir.is_dir() {
+                paths.push(dir);
+            }
+        }
+    }
+
     if let Some(qwen_base) = providers::qwen::get_base_path() {
         let qwen_projects = PathBuf::from(qwen_base);
         if qwen_projects.is_dir() {

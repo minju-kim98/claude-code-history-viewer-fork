@@ -16,6 +16,9 @@ pub mod copilot_cli;
 pub mod crush;
 pub mod cursor;
 pub mod cursor_agent;
+/// Fork-only. `DITCodeAgent` — in-house Codex fork, Codex-format rollouts under
+/// `~/.ditcode`. See `docs/MAINTAINING_FORK.md`.
+pub mod ditcodeagent;
 pub mod forgecode;
 pub mod gemini;
 pub mod goose;
@@ -92,6 +95,8 @@ pub enum ProviderId {
     Trae,
     /// Mistral Vibe CLI (`~/.vibe/logs/session/<session>/`).
     Vibe,
+    /// Fork-only. `DITCodeAgent` — Codex-format rollouts under `~/.ditcode`.
+    DitCodeAgent,
 }
 
 impl ProviderId {
@@ -126,6 +131,7 @@ impl ProviderId {
             Self::Zed => "zed",
             Self::Trae => "trae",
             Self::Vibe => "vibe",
+            Self::DitCodeAgent => "ditcodeagent",
         }
     }
 
@@ -160,6 +166,7 @@ impl ProviderId {
             "zed" => Some(Self::Zed),
             "trae" => Some(Self::Trae),
             "vibe" => Some(Self::Vibe),
+            "ditcodeagent" => Some(Self::DitCodeAgent),
             _ => None,
         }
     }
@@ -195,6 +202,7 @@ impl ProviderId {
             Self::Zed => "Zed",
             Self::Trae => "Trae",
             Self::Vibe => "Mistral Vibe",
+            Self::DitCodeAgent => "DITCodeAgent",
         }
     }
 }
@@ -243,6 +251,9 @@ pub fn detect_providers() -> Vec<ProviderInfo> {
         providers.push(info);
     }
     if let Some(info) = openinterpreter::detect() {
+        providers.push(info);
+    }
+    if let Some(info) = ditcodeagent::detect() {
         providers.push(info);
     }
     if let Some(info) = pi::detect() {

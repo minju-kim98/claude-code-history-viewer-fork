@@ -219,12 +219,41 @@ pnpm exec tauri build
 
 업스트림 머지 시 충돌 해결 참고용. 모두 `ditcodeagent`/`DitCodeAgent`/`DITCodeAgent`로 검색 가능.
 
+### 데이터 소스 (2026-07 기준)
+
+DITCodeAgent CLI는 **Gemini CLI fork → Codex fork로 재루팅**됐다. 현재 세션은
+Codex와 **바이트 단위로 동일한 rollout JSONL** 포맷을 쓴다:
+
+```
+~/.ditcode/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl   (+ archived_sessions/)
+{"type":"session_meta","payload":{"originator":"dit-agent-host","model_provider":"dit",...}}
+```
+
+홈 디렉토리는 `DITCODE_HOME`으로 오버라이드 가능. **`CODEX_HOME`은 일부러 무시**한다
+— 개발자 본인의 Codex 기록(`~/.codex`)이 이 provider로 새어 들어오면 안 되기 때문.
+
+그래서 `ditcodeagent.rs`는 파서를 직접 구현하지 않고 **`codex::parse_rollout_file` +
+메타데이터 추출기를 재사용**한다 (upstream의 `openinterpreter.rs`와 동일한 패턴 —
+그쪽도 Codex fork다). 경로는 DIT 루트 기준으로 검증하고, 결과 메시지의 provider
+태그만 다시 붙인다.
+
+> 구 Gemini 포맷 스토어(`~/.ditcodeagent/tmp/<project>/chats/session-*.json`)는
+> **이 fork에서 더 이상 읽지 않는다.** 해당 레거시 세션은 별도 레포에서 처리한다.
+
 ### Backend (Rust)
 
-- `src-tauri/src/providers/ditcodeagent.rs` (신규 — gemini.rs 기반)
-- `src-tauri/src/providers/mod.rs` — `ProviderId` enum + `parse` + `as_str` + `display_name` + `detect_providers`
-- `src-tauri/src/commands/multi_provider.rs` — scan / load_sessions / load_messages / search 4 함수의 default array와 if-branch / match arm
+- `src-tauri/src/providers/ditcodeagent.rs` (신규 — `openinterpreter.rs` 기반, Codex 파서 재사용)
+- `src-tauri/src/providers/mod.rs` — `pub mod` + `ProviderId` enum + `parse` + `as_str` + `display_name` + `detect_providers`
+- `src-tauri/src/commands/multi_provider.rs` — scan / load_sessions / load_messages / search 4 함수의 default array와 `sync_scanners` / match arm
 - `src-tauri/src/commands/stats.rs` — `StatsProvider` enum, `stats_provider_id`, `all_stats_providers`, `parse_active_stats_providers`, `detect_project_provider`, `detect_session_provider`, `is_ditcodeagent_path` (신규 helper), 그 외 dispatch 다수
+- `src-tauri/src/lib.rs` — 파일 워처 감시 경로 (`sessions`, `archived_sessions`)
+- `src-tauri/src/commands/session/mod.rs` — 세션 경로 allowlist
+- `src-tauri/tests/tauriConfig.test.ts` — updater endpoint를 fork 레포로 검증
+
+> ⚠️ `detect_session_provider`의 **순서가 중요**하다. DIT rollout은 Codex rollout과
+> 파일명·포맷이 같아 루트로만 구분되므로, `is_ditcodeagent_path` 검사가
+> `rollout-*.jsonl → Codex` fallback보다 **먼저** 와야 한다. 순서가 뒤집히면 DIT
+> 사용량이 Codex 통계로 잘못 집계된다.
 
 ### Frontend (TypeScript / React)
 
@@ -286,7 +315,19 @@ Get-Content .tauri/key-password.txt -Raw | Set-Clipboard
 
 ---
 
-## 8. DITCodeAgent 토큰 백필 스크립트
+## 8. DITCodeAgent 토큰 백필 스크립트 (레거시 전용 — 신규 세션엔 불필요)
+
+> ⚠️ **이 스크립트는 구 Gemini 포맷 세션(`~/.ditcodeagent`) 전용이다.**
+> Codex 기반으로 재루팅된 현재 CLI(`~/.ditcode`)는 rollout에 `token_count`
+> 이벤트로 실제 사용량을 정확히 기록한다:
+>
+> ```json
+> {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":
+>   {"input_tokens":16153,"cached_input_tokens":10624,"output_tokens":15,...}}}}
+> ```
+>
+> 즉 신규 세션은 백필이 필요 없고, 통계도 근사치가 아닌 실측값이다. 아래 내용은
+> 남아 있는 레거시 세션을 다룰 때만 유효하다.
 
 `scripts/ditcodeagent_backfill_tokens.py` — DITCodeAgent 로컬 세션 로그의
 `tokens` 필드를 채워 viewer의 토큰/비용 통계가 0으로 뜨는 문제를 우회한다.
