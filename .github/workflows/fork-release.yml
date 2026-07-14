@@ -1,0 +1,133 @@
+# Fork-specific release workflow for minju-kim98/claude-code-history-viewer-fork.
+#
+# Triggers on tag push (v*) and builds a Windows installer + updater metadata.
+# Tauri auto-updater (tauri.conf.json -> plugins.updater.endpoints) reads
+# `latest.json` from the GitHub release created by this workflow, so installed
+# clients receive updates automatically when a new tag is pushed.
+#
+# Required repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY           - contents of .tauri/cchv-fork.key (NOT the file path)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  - matching password (contents of .tauri/key-password.txt)
+#
+# First-time setup: see docs/MAINTAINING_FORK.md `Auto-update setup`.
+
+name: Fork Release (Windows)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.13.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Guard: only run in this fork. Prevents accidental execution if the workflow
+    # ever ends up in another fork or upstream.
+    if: github.repository == 'minju-kim98/claude-code-history-viewer-fork'
+
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.tag }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+          if (-not $tag) { Write-Error "Tag not provided"; exit 1 }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$($tag -replace '^v','')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Output "Releasing tag: $tag"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          cache-on-failure: "true"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build & release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ steps.tag.outputs.tag }}
+          releaseName: ${{ steps.tag.outputs.tag }}
+          releaseBody: |
+            Auto-built Windows installer for the DITCodeAgent fork.
+
+            Installed clients with v${{ steps.tag.outputs.version }} or newer will receive this
+            update automatically via Tauri updater. First-time install: download the
+            `*-setup.exe` asset below.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+      - name: Create portable Windows zip
+        shell: pwsh
+        run: |
+          $version = '${{ steps.tag.outputs.version }}'
+          $candidates = @(Get-ChildItem "src-tauri/target/release/*.exe" |
+            Where-Object { $_.Name -notmatch '(?i)(setup|install|uninstall)' })
+
+          if ($candidates.Count -ne 1) {
+            Write-Error "Expected exactly 1 app exe, found $($candidates.Count): $($candidates.Name -join ', ')"
+            exit 1
+          }
+          $exe = $candidates[0]
+          $zipName = "Claude.Code.History.Viewer_${version}_x64-portable.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $zipName -Force
+
+          if (-not (Test-Path $zipName)) {
+            Write-Error "Failed to create portable zip"
+            exit 1
+          }
+          "PORTABLE_ZIP_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload portable zip to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release upload "${{ steps.tag.outputs.tag }}" `
+            "${{ env.PORTABLE_ZIP_PATH }}" `
+            --repo "${{ github.repository }}" `
+            --clobber

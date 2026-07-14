@@ -73,6 +73,24 @@ feature/* ← 개별 기능 (develop에서 분기, develop으로 PR)
 - `main`에 직접 머지하지 않음 — 릴리즈 시에만 `develop` → `main` 머지
 - README, 스크린샷 등 사용자 문서는 릴리즈 커밋에서만 `main`에 반영
 
+## Fork 정책 — DITCodeAgent 프로바이더
+
+이 fork는 사내 LLM인 **DITCodeAgent** 프로바이더를 지원하기 위해 유지된다.
+DITCodeAgent는 회사 내부 도구이므로 upstream(`jhlee0409/claude-code-history-viewer`)에
+역기여하지 않는다.
+
+### 운영 규칙
+
+- `src-tauri/src/providers/ditcodeagent.rs`, `src/i18n/locales/*/common.json`의
+  `common.provider.ditcodeagent`, `StatsProvider::DitCodeAgent`,
+  `ProviderId.ditcodeagent` 관련 코드는 **fork 전용**이며 upstream PR로 보내지 않는다.
+- DITCodeAgent 전용 버그 fix와 enhancement 커밋은 `fix(ditcodeagent):`,
+  `feat(ditcodeagent):` 형태로 scope을 명시해 upstream-sync 시 cherry-pick 대상에서
+  쉽게 식별/배제할 수 있도록 한다.
+- 반대로 다른 프로바이더(Claude/Codex/OpenCode/Antigravity 등)에 대한 일반 fix는
+  필요 시 upstream PR로 분리해 보낼 수 있다 — scope을 분리해 작성해 둘 것.
+- upstream sync 절차는 `docs/MAINTAINING_FORK.md` 참조.
+
 ## Agent skills
 
 mattpocock 스킬(`/triage`, `/to-issues`, `/diagnose`, `/improve-codebase-architecture` 등)이 참조하는 메타 설정.

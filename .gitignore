@@ -26,6 +26,9 @@ src-tauri/gen/
 src-tauri/.env
 src-tauri/tauri.local.conf.json
 
+# Tauri signing keys (private key MUST NOT be committed)
+.tauri/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

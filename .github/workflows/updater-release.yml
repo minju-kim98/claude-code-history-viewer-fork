@@ -1,14 +1,16 @@
 # GitHub Releases에서 Tauri 업데이터를 위한 메타데이터 자동 생성
-name: Release with Updater Metadata
+#
+# NOTE (fork): This upstream workflow is disabled in the fork because it depends
+# on macOS code-signing/notarization secrets and the upstream Homebrew tap which
+# this fork does not own. The fork uses `fork-release.yml` (Windows-only) instead.
+# Kept here for clean upstream merges — re-enable by restoring the `push` trigger
+# if you ever publish a multi-platform release from this fork.
+name: Release with Updater Metadata (upstream — disabled in fork)
 
 on:
-  push:
-    tags:
-      - "v*"
-  # Recovery path. The tag-push event is the only thing that normally starts
-  # this, so a dropped event - GitHub was mid-incident when v1.26.0 was tagged
-  # (#532) - left no way to run it except deleting the tag and pushing it
-  # again. That is surgery on a published tag, and it is avoidable.
+  # fork: the upstream `push: tags: v*` trigger is intentionally dropped so a
+  # fork release tag never starts this multi-platform workflow. Manual dispatch
+  # keeps upstream's recovery path (#532) intact for the upstream repo.
   workflow_dispatch:
     inputs:
       tag:
@@ -21,6 +23,8 @@ permissions:
 
 jobs:
   create-release:
+    # Fork guard: only run in the upstream repo.
+    if: github.repository == 'jhlee0409/claude-code-history-viewer'
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create-release.outputs.result }}
