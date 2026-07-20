@@ -202,6 +202,7 @@ C 드라이브 공간도 최소 20 GB 이상 여유 유지(Windows 자체 임시
 | release는 만들어지는데 `latest.json` 없음 | `includeUpdaterJson: false`로 잘못 설정 | `fork-release.yml`에서 `includeUpdaterJson: true` 확인 |
 | `'just' is not recognized` | Windows runner에 just 미설치 | `fork-release.yml`의 `Install just` step 확인 |
 | upstream의 `updater-release.yml`이 동시 실행되어 실패 | 자동 trigger 살아있음 | 이미 `workflow_dispatch` only로 변경됨 + fork-guard 처리 |
+| 매일 `Daily PR Health Digest` 실패 메일이 옴 | upstream에서 상속된 `daily-pr-health.yml`이 `schedule`로 도는데 fork에 `ANTHROPIC_API_KEY` secret이 없음 | 이 fork는 외부 PR을 받지 않으므로 워크플로를 삭제함. **upstream sync 시 다시 딸려오면 재삭제할 것** |
 
 ### 빠른 reset (로컬 빌드 마지막 수단)
 
