@@ -75,6 +75,7 @@ debug.log*
 **/*/CLAUDE.md
 .serena/memories/
 .memsearch
+.codegraph/
 
 # AFC plugin state (abandoned tooling — kept out of the repo)
 .claude/afc/
