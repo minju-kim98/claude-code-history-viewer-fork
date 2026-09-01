@@ -1,7 +1,7 @@
 import type { ProviderId } from "../types";
 import { isWindows } from "./platform";
 
-export const PROVIDER_IDS: ProviderId[] = ["aider", "amazonq", "antigravity", "claude", "cline", "codebuddy", "codex", "continue", "copilot", "crush", "cursor", "cursor-agent", "ditcodeagent", "forgecode", "gemini", "goose", "grok", "kimi", "kiro", "llm", "ompi", "opencode", "openhands", "openinterpreter", "pearai", "pi", "qwen", "trae", "vibe", "zed"];
+export const PROVIDER_IDS: ProviderId[] = ["aider", "amazonq", "antigravity", "boim", "boim-dev", "claude", "cline", "codebuddy", "codex", "continue", "copilot", "crush", "cursor", "cursor-agent", "ditcodeagent", "forgecode", "gemini", "goose", "grok", "kimi", "kiro", "llm", "ompi", "opencode", "openhands", "openinterpreter", "pearai", "pi", "qwen", "trae", "vibe", "zed"];
 export const DEFAULT_PROVIDER_ID: ProviderId = "claude";
 
 // WSL provider loaders use UNC-backed paths and are not interchangeable with
@@ -42,6 +42,8 @@ const PROVIDER_TRANSLATIONS: Record<
   openhands: { key: "common.provider.openhands", fallback: "OpenHands" },
   openinterpreter: { key: "common.provider.openinterpreter", fallback: "Open Interpreter" },
   ditcodeagent: { key: "common.provider.ditcodeagent", fallback: "DITCodeAgent" },
+  boim: { key: "common.provider.boim", fallback: "Boim" },
+  "boim-dev": { key: "common.provider.boimDev", fallback: "Boim Dev" },
   pearai: { key: "common.provider.pearai", fallback: "PearAI" },
   pi: { key: "common.provider.pi", fallback: "Pi" },
   qwen: { key: "common.provider.qwen", fallback: "Qwen Code" },
@@ -232,6 +234,20 @@ const PROVIDER_SESSION_CAPABILITIES: Record<ProviderId, ProviderSessionCapabilit
     supportsSessionDeletion: false,
     supportsArchiveCreation: false,
   },
+  boim: {
+    supportsConversationBreakdown: false,
+    supportsNativeRename: false,
+    supportsResumeCommand: false,
+    supportsSessionDeletion: false,
+    supportsArchiveCreation: false,
+  },
+  "boim-dev": {
+    supportsConversationBreakdown: false,
+    supportsNativeRename: false,
+    supportsResumeCommand: false,
+    supportsSessionDeletion: false,
+    supportsArchiveCreation: false,
+  },
   pi: {
     supportsConversationBreakdown: false,
     supportsNativeRename: false,
@@ -302,6 +318,8 @@ export function getProviderId(provider?: ProviderId | string): ProviderId {
     case "cursor":
     case "cursor-agent":
     case "ditcodeagent":
+    case "boim":
+    case "boim-dev":
     case "gemini":
     case "goose":
     case "grok":
@@ -506,6 +524,8 @@ export const PROVIDER_BADGE_STYLES: Record<ProviderId, string> = {
   opencode: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   openinterpreter: "bg-stone-500/15 text-stone-600 dark:text-stone-400",
   ditcodeagent: "bg-sky-600/15 text-sky-700 dark:text-sky-300",
+  boim: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-300",
+  "boim-dev": "bg-cyan-800/15 text-cyan-800 dark:text-cyan-200",
   openhands: "bg-gray-500/15 text-gray-600 dark:text-gray-300",
   pearai: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
   pi: "bg-teal-500/15 text-teal-600 dark:text-teal-400",

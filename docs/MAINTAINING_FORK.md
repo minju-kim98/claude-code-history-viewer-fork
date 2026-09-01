@@ -216,11 +216,21 @@ pnpm exec tauri build
 
 ---
 
-## 6. fork 내 DITCodeAgent 변경 위치 (참고)
+## 6. fork 전용 provider 변경 위치 (참고)
 
-업스트림 머지 시 충돌 해결 참고용. 모두 `ditcodeagent`/`DitCodeAgent`/`DITCodeAgent`로 검색 가능.
+업스트림 머지 시 충돌 해결 참고용. fork 전용 provider는 **DITCodeAgent**와
+**Boim**(prod/dev) 세 개다. 각각 `ditcodeagent`/`DitCodeAgent`/`DITCodeAgent`,
+`boim`/`Boim`/`boim-dev`/`BoimDev`로 검색 가능.
 
-### 데이터 소스 (2026-07 기준)
+세 provider 모두 **Codex와 바이트 단위로 동일한 rollout JSONL**을 쓰므로 파서를
+직접 구현하지 않고 `codex::parse_rollout_file` + 메타데이터 추출기를 재사용한다
+(upstream의 `openinterpreter.rs`와 동일한 패턴 — 그쪽도 Codex fork다). 포맷이
+같다는 것은 곧 **루트 경로만이 유일한 구분자**라는 뜻이고, 아래 두 곳의 순서·검증이
+전부 거기서 나온다.
+
+### 6.1. DITCodeAgent
+
+#### 데이터 소스 (2026-07 기준)
 
 DITCodeAgent CLI는 **Gemini CLI fork → Codex fork로 재루팅**됐다. 현재 세션은
 Codex와 **바이트 단위로 동일한 rollout JSONL** 포맷을 쓴다:
@@ -241,7 +251,7 @@ Codex와 **바이트 단위로 동일한 rollout JSONL** 포맷을 쓴다:
 > 구 Gemini 포맷 스토어(`~/.ditcodeagent/tmp/<project>/chats/session-*.json`)는
 > **이 fork에서 더 이상 읽지 않는다.** 해당 레거시 세션은 별도 레포에서 처리한다.
 
-### Backend (Rust)
+#### Backend (Rust)
 
 - `src-tauri/src/providers/ditcodeagent.rs` (신규 — `openinterpreter.rs` 기반, Codex 파서 재사용)
 - `src-tauri/src/providers/mod.rs` — `pub mod` + `ProviderId` enum + `parse` + `as_str` + `display_name` + `detect_providers`
@@ -256,13 +266,76 @@ Codex와 **바이트 단위로 동일한 rollout JSONL** 포맷을 쓴다:
 > `rollout-*.jsonl → Codex` fallback보다 **먼저** 와야 한다. 순서가 뒤집히면 DIT
 > 사용량이 Codex 통계로 잘못 집계된다.
 
-### Frontend (TypeScript / React)
+#### Frontend (TypeScript / React)
 
 - `src/types/core/session.ts` — `ProviderId` union
 - `src/utils/providers.ts` — `PROVIDER_IDS`, `PROVIDER_TRANSLATIONS`, `PROVIDER_SESSION_CAPABILITIES`, `getProviderId` switch, `PROVIDER_BADGE_STYLES`
 - `src/test/providers.utils.test.ts` — `PROVIDER_IDS` snapshot
 - `src/components/ProjectTree/index.tsx` — `providerCounts` 초기화 객체
 - `src/i18n/locales/{en,ko,ja,zh-CN,zh-TW}/common.json` — `common.provider.ditcodeagent`
+- `src/i18n/types.generated.ts` — `pnpm run generate:i18n-types`로 재생성
+
+### 6.2. Boim (prod / dev)
+
+Boim Desktop은 사내에서 개발 중인 Codex 기반 에이전트다. DITCodeAgent와 마찬가지로
+Codex와 동일한 rollout JSONL을 쓰며, `session_meta`에 `originator: "boim_desktop"`,
+`model_provider: "openai-api"`가 붙는다.
+
+```
+<루트>/runtime/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl
+{"type":"session_meta","payload":{"originator":"boim_desktop","cwd":"C:\\...\\Documents\\Boim\\<프로젝트>",...}}
+```
+
+**두 flavor를 별도 provider로 둔다.**
+
+| flavor | provider id | 루트 | 기본값 |
+|---|---|---|---|
+| prod | `boim` | `$BOIM_HOME` | `~/.boim` |
+| dev | `boim-dev` | `$BOIM_DEV_HOME` | **없음** (미설정 시 provider 자체가 안 뜸) |
+
+합치지 않는 이유: 두 루트가 `originator`도 `cwd`도 같다. 개발 빌드를 같은
+`Documents/Boim/<프로젝트>` 워크스페이스에 대고 돌리기 때문이다. 병합하면 서로 다른
+세션 집합이 한 프로젝트로 뭉쳐 버린다 — 실측으로 prod 29개 / dev 27개 프로젝트가
+이름 대부분을 공유한다.
+
+dev 루트에 기본값을 두지 않은 것도 의도적이다. 그 루트는 개발자 본인 체크아웃 안
+(`<repo>/.boim-dev`)에 있어 팀원이 공유하지 않는다. 본인 머신에서 dev 기록을 보려면
+`BOIM_DEV_HOME`을 설정한다:
+
+```powershell
+[Environment]::SetEnvironmentVariable("BOIM_DEV_HOME", "D:\development\boim-desktop\.boim-dev", "User")
+# 설정 후 앱 재시작
+```
+
+구현은 `boim.rs`의 `Flavor` 구조체 하나로 파라미터화돼 있고, `boim_dev.rs`는 그
+구현에 dev flavor를 넘기는 얇은 표면이다. prod/dev 로직이 갈라질 수 없다.
+
+#### Backend (Rust)
+
+- `src-tauri/src/providers/boim.rs` (신규 — `Flavor` 파라미터화 구현 + prod 공개 API)
+- `src-tauri/src/providers/boim_dev.rs` (신규 — dev flavor 위임 전용)
+- `src-tauri/src/providers/mod.rs` — `pub mod` ×2 + `ProviderId::{Boim, BoimDev}` + `parse` + `as_str` + `display_name` + `detect_providers`
+- `src-tauri/src/commands/multi_provider.rs` — default array ×2, scanner table, load_sessions / load_messages match arm, search 블록 ×2
+- `src-tauri/src/commands/stats.rs` — `StatsProvider::{Boim, BoimDev}`, `stats_provider_id`, `all_stats_providers`, `parse_active_stats_providers`, `detect_project_provider`, `detect_session_provider`, `is_boim_path` / `is_boim_dev_path` (신규 helper), dispatch 헬퍼 3종, `resolve_provider_project_name`(+`_from_session`), global file stats 목록
+- `src-tauri/src/lib.rs` — 파일 워처 감시 경로 (**`runtime/` 한 단계 아래**임에 주의)
+- `src-tauri/src/commands/session/mod.rs` — 세션 경로 allowlist (동일하게 `runtime/` 아래)
+
+> ⚠️ DIT와 같은 이유로 `detect_session_provider`의 **순서가 중요**하다.
+> `is_boim_dev_path` → `is_boim_path` 검사가 `rollout-*.jsonl → Codex` fallback보다
+> **먼저** 와야 한다. dev를 prod보다 먼저 보는 것은 `BOIM_DEV_HOME`이 prod 루트
+> 안쪽을 가리키는 경우에 대비한 것이다.
+
+#### Frontend (TypeScript / React)
+
+DIT와 동일한 지점들. 단 `PROVIDER_IDS`는 **알파벳 순**이라 `antigravity` 다음에
+`boim`, `boim-dev`가 온다 — `src/test/providers.utils.test.ts`의 스냅샷이 순서까지
+검증하므로 위치를 맞춰야 한다.
+
+- `src/types/core/session.ts` — `ProviderId` union
+- `src/utils/providers.ts` — `PROVIDER_IDS`, `PROVIDER_TRANSLATIONS`, `PROVIDER_SESSION_CAPABILITIES`, `getProviderId` switch, `PROVIDER_BADGE_STYLES`
+- `src/test/providers.utils.test.ts` — `PROVIDER_IDS` snapshot
+- `src/components/ProjectTree/index.tsx` — `providerCounts` 초기화 객체
+- `src/i18n/locales/{en,ko,ja,zh-CN,zh-TW}/common.json` — `common.provider.boim`, `common.provider.boimDev`
 - `src/i18n/types.generated.ts` — `pnpm run generate:i18n-types`로 재생성
 
 ---

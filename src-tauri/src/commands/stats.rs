@@ -53,6 +53,8 @@ enum StatsProvider {
     Cursor,
     /// Fork-only. Codex-format rollouts under the `DITCodeAgent` home.
     DitCodeAgent,
+    Boim,
+    BoimDev,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +115,8 @@ fn stats_provider_id(provider: StatsProvider) -> &'static str {
         StatsProvider::Gemini => "gemini",
         StatsProvider::Cursor => "cursor",
         StatsProvider::DitCodeAgent => "ditcodeagent",
+        StatsProvider::Boim => "boim",
+        StatsProvider::BoimDev => "boim-dev",
     }
 }
 
@@ -321,6 +325,8 @@ fn all_stats_providers() -> HashSet<StatsProvider> {
         StatsProvider::Gemini,
         StatsProvider::Cursor,
         StatsProvider::DitCodeAgent,
+        StatsProvider::Boim,
+        StatsProvider::BoimDev,
     ]
     .into_iter()
     .collect()
@@ -366,6 +372,8 @@ fn parse_active_stats_providers(active_providers: Option<Vec<String>>) -> HashSe
             "gemini" => Some(StatsProvider::Gemini),
             "cursor" => Some(StatsProvider::Cursor),
             "ditcodeagent" => Some(StatsProvider::DitCodeAgent),
+            "boim" => Some(StatsProvider::Boim),
+            "boim-dev" => Some(StatsProvider::BoimDev),
             _ => {
                 unknown.push(provider);
                 None
@@ -417,6 +425,10 @@ fn detect_project_provider(project_path: &str) -> StatsProvider {
         StatsProvider::Zed
     } else if project_path.starts_with("ditcodeagent://") {
         StatsProvider::DitCodeAgent
+    } else if project_path.starts_with("boim-dev://") {
+        StatsProvider::BoimDev
+    } else if project_path.starts_with("boim://") {
+        StatsProvider::Boim
     } else if project_path.starts_with("codex://") {
         StatsProvider::Codex
     } else if project_path.starts_with("forgecode://") {
@@ -536,6 +548,16 @@ fn detect_session_provider(session_path: &str) -> StatsProvider {
     // byte-identical to Codex ones and differ only by their root.
     if is_ditcodeagent_path(session_path) {
         return StatsProvider::DitCodeAgent;
+    }
+
+    // Same reasoning as DITCodeAgent: Boim rollouts are byte-identical to
+    // Codex ones, so only the root separates them. Dev is checked first in
+    // case BOIM_DEV_HOME ever points inside the prod root.
+    if is_boim_dev_path(session_path) {
+        return StatsProvider::BoimDev;
+    }
+    if is_boim_path(session_path) {
+        return StatsProvider::Boim;
     }
 
     if is_kimi_path(session_path) {
@@ -755,6 +777,21 @@ fn cursor_virtual_paths_match(left: &str, right: &str) -> bool {
 /// only be told apart from Codex by its home root — hence the anchored check.
 fn is_ditcodeagent_path(path: &str) -> bool {
     providers::ditcodeagent::get_base_path()
+        .map(|root| Path::new(path).starts_with(root))
+        .unwrap_or(false)
+}
+
+/// Fork-only. Boim writes Codex-format `rollout-*.jsonl` too, so the same
+/// anchored-root check applies.
+fn is_boim_path(path: &str) -> bool {
+    providers::boim::get_base_path()
+        .map(|root| Path::new(path).starts_with(root))
+        .unwrap_or(false)
+}
+
+/// Fork-only. The Boim development build, rooted at `$BOIM_DEV_HOME`.
+fn is_boim_dev_path(path: &str) -> bool {
+    providers::boim_dev::get_base_path()
         .map(|root| Path::new(path).starts_with(root))
         .unwrap_or(false)
 }
@@ -1536,6 +1573,8 @@ fn scan_stats_projects(
         StatsProvider::Antigravity => providers::antigravity::scan_projects(),
         StatsProvider::Copilot => providers::copilot::scan_projects(),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::scan_projects(),
+        StatsProvider::Boim => providers::boim::scan_projects(),
+        StatsProvider::BoimDev => providers::boim_dev::scan_projects(),
         StatsProvider::Ompi => providers::ompi::scan_projects(),
         StatsProvider::Pi => providers::pi::scan_projects(),
         StatsProvider::Gemini => providers::gemini::scan_projects(),
@@ -1576,6 +1615,8 @@ fn load_stats_sessions(
         StatsProvider::Antigravity => providers::antigravity::load_sessions(project_path, false),
         StatsProvider::Copilot => providers::copilot::load_sessions(project_path, false),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::load_sessions(project_path, false),
+        StatsProvider::Boim => providers::boim::load_sessions(project_path, false),
+        StatsProvider::BoimDev => providers::boim_dev::load_sessions(project_path, false),
         StatsProvider::Ompi => providers::ompi::load_sessions(project_path, false),
         StatsProvider::Pi => providers::pi::load_sessions(project_path, false),
         StatsProvider::Gemini => providers::gemini::load_sessions(project_path, false),
@@ -1614,6 +1655,8 @@ fn load_stats_messages(
         StatsProvider::Antigravity => providers::antigravity::load_messages(session_path),
         StatsProvider::Copilot => providers::copilot::load_messages(session_path),
         StatsProvider::DitCodeAgent => providers::ditcodeagent::load_messages(session_path),
+        StatsProvider::Boim => providers::boim::load_messages(session_path),
+        StatsProvider::BoimDev => providers::boim_dev::load_messages(session_path),
         StatsProvider::Ompi => providers::ompi::load_messages(session_path),
         StatsProvider::Pi => providers::pi::load_messages(session_path),
         StatsProvider::Gemini => providers::gemini::load_messages(session_path),
@@ -2860,6 +2903,19 @@ fn resolve_provider_project_name(provider: StatsProvider, project_path: &str) ->
                 .unwrap_or(cwd)
                 .to_string()
         }
+        StatsProvider::Boim | StatsProvider::BoimDev => {
+            let scheme = if provider == StatsProvider::BoimDev {
+                "boim-dev://"
+            } else {
+                "boim://"
+            };
+            let cwd = project_path.strip_prefix(scheme).unwrap_or(project_path);
+            PathBuf::from(cwd)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(cwd)
+                .to_string()
+        }
         StatsProvider::ForgeCode => {
             if let Ok(projects) = providers::forgecode::scan_projects() {
                 if let Some(project) = projects.into_iter().find(|p| p.path == project_path) {
@@ -3082,6 +3138,30 @@ fn resolve_provider_project_name_from_session(
                 }
             }
             "ditcodeagent".to_string()
+        }
+        StatsProvider::Boim => {
+            if let Ok(projects) = providers::boim::scan_projects() {
+                for project in projects {
+                    if let Ok(sessions) = providers::boim::load_sessions(&project.path, false) {
+                        if sessions.iter().any(|s| s.file_path == session_path) {
+                            return project.name;
+                        }
+                    }
+                }
+            }
+            "boim".to_string()
+        }
+        StatsProvider::BoimDev => {
+            if let Ok(projects) = providers::boim_dev::scan_projects() {
+                for project in projects {
+                    if let Ok(sessions) = providers::boim_dev::load_sessions(&project.path, false) {
+                        if sessions.iter().any(|s| s.file_path == session_path) {
+                            return project.name;
+                        }
+                    }
+                }
+            }
+            "boim-dev".to_string()
         }
         StatsProvider::Kimi => {
             if let Some(project_dir) = Path::new(session_path).parent() {
@@ -5150,6 +5230,8 @@ pub async fn get_global_stats_summary(
         StatsProvider::Crush,
         StatsProvider::CursorAgent,
         StatsProvider::DitCodeAgent,
+        StatsProvider::Boim,
+        StatsProvider::BoimDev,
         StatsProvider::Goose,
         StatsProvider::Kiro,
         StatsProvider::Llm,

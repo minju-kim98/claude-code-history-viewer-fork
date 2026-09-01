@@ -1148,6 +1148,22 @@ fn collect_watch_paths() -> Vec<std::path::PathBuf> {
         }
     }
 
+    // Boim keeps its rollouts one level deeper, under `runtime/`.
+    for base in [
+        providers::boim::get_base_path(),
+        providers::boim_dev::get_base_path(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        for sub in ["sessions", "archived_sessions"] {
+            let dir = PathBuf::from(&base).join("runtime").join(sub);
+            if dir.is_dir() {
+                paths.push(dir);
+            }
+        }
+    }
+
     if let Some(qwen_base) = providers::qwen::get_base_path() {
         let qwen_projects = PathBuf::from(qwen_base);
         if qwen_projects.is_dir() {

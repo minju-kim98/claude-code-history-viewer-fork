@@ -6,6 +6,11 @@ pub mod antigravity;
 /// Antigravity CLI (`~/.gemini/antigravity-cli`) layout — surfaced through the
 /// `antigravity` provider, not a separate provider id.
 pub mod antigravity_cli;
+/// Fork-only. Boim Desktop — in-house Codex-based agent, Codex-format rollouts
+/// under `~/.boim/runtime`. See `docs/MAINTAINING_FORK.md`.
+pub mod boim;
+/// Fork-only. The Boim Desktop development build, rooted at `$BOIM_DEV_HOME`.
+pub mod boim_dev;
 pub mod claude;
 pub mod cline;
 pub mod codebuddy;
@@ -97,6 +102,10 @@ pub enum ProviderId {
     Vibe,
     /// Fork-only. `DITCodeAgent` — Codex-format rollouts under `~/.ditcode`.
     DitCodeAgent,
+    /// Fork-only. Boim Desktop — Codex-format rollouts under `~/.boim/runtime`.
+    Boim,
+    /// Fork-only. The Boim Desktop dev build, rooted at `$BOIM_DEV_HOME`.
+    BoimDev,
 }
 
 impl ProviderId {
@@ -132,6 +141,8 @@ impl ProviderId {
             Self::Trae => "trae",
             Self::Vibe => "vibe",
             Self::DitCodeAgent => "ditcodeagent",
+            Self::Boim => "boim",
+            Self::BoimDev => "boim-dev",
         }
     }
 
@@ -167,6 +178,8 @@ impl ProviderId {
             "trae" => Some(Self::Trae),
             "vibe" => Some(Self::Vibe),
             "ditcodeagent" => Some(Self::DitCodeAgent),
+            "boim" => Some(Self::Boim),
+            "boim-dev" => Some(Self::BoimDev),
             _ => None,
         }
     }
@@ -203,6 +216,8 @@ impl ProviderId {
             Self::Trae => "Trae",
             Self::Vibe => "Mistral Vibe",
             Self::DitCodeAgent => "DITCodeAgent",
+            Self::Boim => "Boim",
+            Self::BoimDev => "Boim Dev",
         }
     }
 }
@@ -254,6 +269,12 @@ pub fn detect_providers() -> Vec<ProviderInfo> {
         providers.push(info);
     }
     if let Some(info) = ditcodeagent::detect() {
+        providers.push(info);
+    }
+    if let Some(info) = boim::detect() {
+        providers.push(info);
+    }
+    if let Some(info) = boim_dev::detect() {
         providers.push(info);
     }
     if let Some(info) = pi::detect() {

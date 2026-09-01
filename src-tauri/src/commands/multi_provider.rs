@@ -92,6 +92,8 @@ pub async fn scan_all_projects(
             "opencode".to_string(),
             "openinterpreter".to_string(),
             "ditcodeagent".to_string(),
+            "boim".to_string(),
+            "boim-dev".to_string(),
             "pi".to_string(),
             "ompi".to_string(),
             "qwen".to_string(),
@@ -181,6 +183,8 @@ pub async fn scan_all_projects(
         ("opencode", providers::opencode::scan_projects),
         ("openinterpreter", providers::openinterpreter::scan_projects),
         ("ditcodeagent", providers::ditcodeagent::scan_projects),
+        ("boim", providers::boim::scan_projects),
+        ("boim-dev", providers::boim_dev::scan_projects),
         ("pi", providers::pi::scan_projects),
         ("ompi", providers::ompi::scan_projects),
         ("qwen", providers::qwen::scan_projects),
@@ -377,6 +381,8 @@ pub async fn load_provider_sessions(
         "opencode" => providers::opencode::load_sessions(&project_path, exclude),
         "openinterpreter" => providers::openinterpreter::load_sessions(&project_path, exclude),
         "ditcodeagent" => providers::ditcodeagent::load_sessions(&project_path, exclude),
+        "boim" => providers::boim::load_sessions(&project_path, exclude),
+        "boim-dev" => providers::boim_dev::load_sessions(&project_path, exclude),
         "pi" => providers::pi::load_sessions(&project_path, exclude),
         "ompi" => providers::ompi::load_sessions(&project_path, exclude),
         "qwen" => providers::qwen::load_sessions(&project_path, exclude),
@@ -491,6 +497,8 @@ fn load_non_claude_messages(
         "opencode" => providers::opencode::load_messages(session_path),
         "openinterpreter" => providers::openinterpreter::load_messages(session_path),
         "ditcodeagent" => providers::ditcodeagent::load_messages(session_path),
+        "boim" => providers::boim::load_messages(session_path),
+        "boim-dev" => providers::boim_dev::load_messages(session_path),
         "pi" => providers::pi::load_messages(session_path),
         "ompi" => providers::ompi::load_messages(session_path),
         "qwen" => providers::qwen::load_messages(session_path),
@@ -669,6 +677,8 @@ pub async fn search_all_providers(
             "opencode".to_string(),
             "openinterpreter".to_string(),
             "ditcodeagent".to_string(),
+            "boim".to_string(),
+            "boim-dev".to_string(),
             "pi".to_string(),
             "ompi".to_string(),
             "qwen".to_string(),
@@ -870,6 +880,26 @@ pub async fn search_all_providers(
             Ok(results) => all_results.extend(results),
             Err(e) => {
                 log::warn!("DITCodeAgent search failed: {e}");
+            }
+        }
+    }
+
+    // Boim (fork-only)
+    if providers_to_search.iter().any(|p| p == "boim") {
+        match providers::boim::search(&query, max_results) {
+            Ok(results) => all_results.extend(results),
+            Err(e) => {
+                log::warn!("Boim search failed: {e}");
+            }
+        }
+    }
+
+    // Boim Dev (fork-only)
+    if providers_to_search.iter().any(|p| p == "boim-dev") {
+        match providers::boim_dev::search(&query, max_results) {
+            Ok(results) => all_results.extend(results),
+            Err(e) => {
+                log::warn!("Boim Dev search failed: {e}");
             }
         }
     }

@@ -132,6 +132,17 @@ pub(crate) fn is_safe_session_path(path: &std::path::Path) -> Result<(), String>
         allowed.push(PathBuf::from(&dit_base).join("sessions"));
         allowed.push(PathBuf::from(&dit_base).join("archived_sessions"));
     }
+    for boim_base in [
+        crate::providers::boim::get_base_path(),
+        crate::providers::boim_dev::get_base_path(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let runtime = PathBuf::from(&boim_base).join("runtime");
+        allowed.push(runtime.join("sessions"));
+        allowed.push(runtime.join("archived_sessions"));
+    }
     if let Some(qwen_base) = crate::providers::qwen::get_base_path() {
         allowed.push(PathBuf::from(qwen_base));
     }

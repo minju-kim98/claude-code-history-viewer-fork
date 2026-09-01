@@ -50,6 +50,8 @@ describe("providers utils", () => {
       "aider",
       "amazonq",
       "antigravity",
+      "boim",
+      "boim-dev",
       "claude",
       "cline",
       "codebuddy",

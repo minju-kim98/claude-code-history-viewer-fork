@@ -66,6 +66,8 @@
   "common.provider.aider": "Aider",
   "common.provider.amazonq": "Amazon Q CLI",
   "common.provider.antigravity": "Antigravity",
+  "common.provider.boim": "Boim",
+  "common.provider.boimDev": "Boim Dev",
   "common.provider.claude": "Claude Code",
   "common.provider.cline": "Cline",
   "common.provider.codebuddy": "CodeBuddy Code",
